@@ -41,12 +41,17 @@ function spawnFruit(): Thing {
 }
 
 function spawnSkull(): Thing {
-  return { ...randPos(), ...randDir(SKULL_SPEED) };
+  let pos;
+  do {
+    pos = randPos();
+  } while (distPx(pos.x, pos.y, px, py) < (PLAYER_R + SKULL_R) * 4);
+  return { ...pos, ...randDir(SKULL_SPEED) };
 }
 
-function dist(ax: number, ay: number, bx: number, by: number): number {
-  const dx = ax - bx;
-  const dy = ay - by;
+// Distance in pixels between two normalized positions
+function distPx(ax: number, ay: number, bx: number, by: number): number {
+  const dx = (ax - bx) * w;
+  const dy = (ay - by) * h;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
@@ -97,9 +102,8 @@ export const faceChomp: Experiment = {
     }
 
     // Check fruit collection
-    const collectR = (PLAYER_R + FRUIT_R) / Math.min(w, h);
     for (let i = fruits.length - 1; i >= 0; i--) {
-      if (dist(px, py, fruits[i].x, fruits[i].y) < collectR) {
+      if (distPx(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
         score++;
         fruits[i] = spawnFruit();
         // Every 5 points, add another skull
@@ -110,9 +114,8 @@ export const faceChomp: Experiment = {
     }
 
     // Check skull collision
-    const hitR = Math.abs(PLAYER_R - SKULL_R) / Math.min(w, h);
     for (const s of skulls) {
-      if (dist(px, py, s.x, s.y) < hitR) {
+      if (distPx(px, py, s.x, s.y) < PLAYER_R + SKULL_R) {
         alive = false;
         deathTime = performance.now();
       }

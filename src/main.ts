@@ -52,7 +52,7 @@ function showMenu() {
   experiments.forEach((exp, i) => {
     html += `<div class="item"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
   });
-  html += `<div class="hint">press a number to start // esc=back  v=video  s=screenshot</div>`;
+  html += `<div class="hint">press a number to start // q=back  v=video  s=screenshot</div>`;
   menuEl.innerHTML = html;
 }
 
@@ -190,8 +190,8 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Escape: back to menu
-  if (e.key === "Escape" && currentExp) {
+  // q: back to menu
+  if (e.key === "q" && currentExp) {
     showMenu();
     return;
   }
