@@ -1,4 +1,4 @@
-import type { Experiment, Landmarks } from "../types";
+import type { Experiment, FaceData } from "../types";
 
 // Lip landmarks for mouth tracking
 const UPPER_LIP = 13;
@@ -108,18 +108,18 @@ export const faceChomp: Experiment = {
     reset();
   },
 
-  update(landmarks: Landmarks | null, dt: number) {
+  update(face: FaceData | null, dt: number) {
     if (!alive) {
       if (performance.now() - deathTime > 2000) reset();
       return;
     }
 
-    tracking = !!landmarks;
-    if (landmarks) {
-      const upper = landmarks[UPPER_LIP];
-      const lower = landmarks[LOWER_LIP];
-      const bridge = landmarks[NOSE_BRIDGE];
-      const chin = landmarks[CHIN];
+    tracking = !!face;
+    if (face) {
+      const upper = face.landmarks[UPPER_LIP];
+      const lower = face.landmarks[LOWER_LIP];
+      const bridge = face.landmarks[NOSE_BRIDGE];
+      const chin = face.landmarks[CHIN];
 
       // Mouth center position
       const mouthX = 1 - (upper.x + lower.x) / 2; // mirror

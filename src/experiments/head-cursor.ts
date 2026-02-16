@@ -1,4 +1,4 @@
-import type { Experiment, Landmarks } from "../types";
+import type { Experiment, FaceData } from "../types";
 
 // Nose tip is landmark index 1
 const NOSE_TIP = 1;
@@ -21,10 +21,10 @@ export const headCursor: Experiment = {
     trail = [];
   },
 
-  update(landmarks: Landmarks | null, _dt: number) {
-    tracking = !!landmarks;
-    if (!landmarks) return;
-    const nose = landmarks[NOSE_TIP];
+  update(face: FaceData | null, _dt: number) {
+    tracking = !!face;
+    if (!face) return;
+    const nose = face.landmarks[NOSE_TIP];
     // Mirror X so moving right moves cursor right
     const targetX = 1 - nose.x;
     const targetY = nose.y;

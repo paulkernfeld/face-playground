@@ -1,7 +1,9 @@
 import "./style.css";
-import { FaceMesh, FACEMESH_TESSELATION } from "@mediapipe/face_mesh";
-import type { Results } from "@mediapipe/face_mesh";
-import type { Experiment, Landmarks } from "./types";
+import {
+  FaceLandmarker,
+  FilesetResolver,
+} from "@mediapipe/tasks-vision";
+import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
 
@@ -18,9 +20,9 @@ const fpsEl = document.getElementById("fps") as HTMLSpanElement;
 
 // -- State --
 let currentExp: Experiment | null = null;
-let latestLandmarks: Landmarks | null = null;
+let latestFace: FaceData | null = null;
 let rawLandmarks: Landmarks | null = null;
-let faceMesh: FaceMesh | null = null;
+let landmarker: FaceLandmarker | null = null;
 let showVideo = false;
 
 // Remap landmarks from a narrower range to 0..1 so you don't have to
@@ -36,7 +38,7 @@ function remapLandmarks(raw: Landmarks): Landmarks {
 // -- Build menu --
 function showMenu() {
   currentExp = null;
-  latestLandmarks = null;
+  latestFace = null;
 
   // Stop camera
   if (video.srcObject) {
@@ -74,7 +76,7 @@ async function enterExperiment(index: number) {
   ctx.textAlign = "center";
   ctx.fillText("starting camera...", canvas.width / 2, canvas.height / 2);
 
-  // Init camera at lower res — FaceMesh downscales internally anyway
+  // Init camera at lower res
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { width: 640, height: 480, facingMode: "user" },
     audio: false,
@@ -82,28 +84,21 @@ async function enterExperiment(index: number) {
   video.srcObject = stream;
   await video.play();
 
-  // Init FaceMesh (once, reuse across experiments)
-  if (!faceMesh) {
-    faceMesh = new FaceMesh({
-      locateFile: (file) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`,
+  // Init FaceLandmarker (once, reuse across experiments)
+  if (!landmarker) {
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    landmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU",
+      },
+      outputFaceBlendshapes: true,
+      runningMode: "VIDEO",
+      numFaces: 1,
     });
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-    faceMesh.onResults((results: Results) => {
-      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        rawLandmarks = results.multiFaceLandmarks[0];
-        latestLandmarks = remapLandmarks(rawLandmarks);
-      } else {
-        rawLandmarks = null;
-        latestLandmarks = null;
-      }
-    });
-    await faceMesh.initialize();
   }
 
   currentExp.setup(ctx, canvas.width, canvas.height);
@@ -128,7 +123,7 @@ async function runLoop() {
   while (currentExp) {
     // Wait for next animation frame
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    if (!currentExp || !faceMesh) break;
+    if (!currentExp || !landmarker) break;
 
     // Timing
     const now = performance.now();
@@ -141,9 +136,26 @@ async function runLoop() {
       fpsEl.textContent = `${Math.round(1 / dt)} fps`;
     }
 
-    // Send frame to FaceMesh and wait for result
+    // Detect face landmarks + blendshapes
     if (video.readyState >= 2) {
-      await faceMesh.send({ image: video });
+      const result = landmarker.detectForVideo(video, now);
+      if (result.faceLandmarks.length > 0) {
+        rawLandmarks = result.faceLandmarks[0];
+        const remapped = remapLandmarks(rawLandmarks);
+
+        // Build blendshapes map
+        const blendshapes: Blendshapes = new Map();
+        if (result.faceBlendshapes.length > 0) {
+          for (const cat of result.faceBlendshapes[0].categories) {
+            blendshapes.set(cat.categoryName, cat.score);
+          }
+        }
+
+        latestFace = { landmarks: remapped, blendshapes };
+      } else {
+        rawLandmarks = null;
+        latestFace = null;
+      }
     }
 
     // Clear + optionally draw video and mesh (zoomed to match remapped coords)
@@ -164,9 +176,9 @@ async function runLoop() {
       if (rawLandmarks) {
         ctx.strokeStyle = "rgba(0, 255, 100, 0.2)";
         ctx.lineWidth = 0.5;
-        for (const [start, end] of FACEMESH_TESSELATION) {
-          const a = rawLandmarks[start];
-          const b = rawLandmarks[end];
+        for (const conn of FaceLandmarker.FACE_LANDMARKS_TESSELATION) {
+          const a = rawLandmarks[conn.start];
+          const b = rawLandmarks[conn.end];
           ctx.beginPath();
           ctx.moveTo((1 - remap(a.x)) * cw, remap(a.y) * ch);
           ctx.lineTo((1 - remap(b.x)) * cw, remap(b.y) * ch);
@@ -175,8 +187,8 @@ async function runLoop() {
       }
     }
 
-    // Update + draw with fresh landmarks
-    currentExp.update(latestLandmarks, dt);
+    // Update + draw with fresh face data
+    currentExp.update(latestFace, dt);
     currentExp.draw(ctx, canvas.width, canvas.height);
   }
 }

@@ -6,9 +6,16 @@ export interface Landmark {
 
 export type Landmarks = Landmark[];
 
+export type Blendshapes = Map<string, number>;
+
+export interface FaceData {
+  landmarks: Landmarks;
+  blendshapes: Blendshapes;
+}
+
 export interface Experiment {
   name: string;
   setup(ctx: CanvasRenderingContext2D, w: number, h: number): void;
-  update(landmarks: Landmarks | null, dt: number): void;
+  update(face: FaceData | null, dt: number): void;
   draw(ctx: CanvasRenderingContext2D, w: number, h: number): void;
 }
