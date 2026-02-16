@@ -4,56 +4,174 @@ import type { Results } from "@mediapipe/face_mesh";
 import type { Experiment, Landmarks } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 
-// -- Registry of experiments --
+// -- Registry --
 const experiments: Experiment[] = [headCursor];
 
-// -- DOM elements --
+// -- DOM --
 const video = document.getElementById("webcam") as HTMLVideoElement;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
-const select = document.getElementById("exp-select") as HTMLSelectElement;
+const menuEl = document.getElementById("menu") as HTMLDivElement;
+const hudEl = document.getElementById("hud") as HTMLDivElement;
 const fpsEl = document.getElementById("fps") as HTMLSpanElement;
 
 // -- State --
-let currentExp: Experiment = experiments[0];
+let currentExp: Experiment | null = null;
 let latestLandmarks: Landmarks | null = null;
 let lastTime = performance.now();
 let frameCount = 0;
-let fpsDisplay = 0;
+let faceMesh: FaceMesh | null = null;
+let cameraReady = false;
+let animFrameId = 0;
 
-// -- Populate experiment selector --
-for (const exp of experiments) {
-  const opt = document.createElement("option");
-  opt.value = exp.name;
-  opt.textContent = exp.name;
-  select.appendChild(opt);
-}
+// -- Build menu --
+function showMenu() {
+  currentExp = null;
+  cameraReady = false;
+  latestLandmarks = null;
 
-// Read from URL param
-const urlExp = new URLSearchParams(location.search).get("exp");
-if (urlExp) {
-  const found = experiments.find((e) => e.name === urlExp);
-  if (found) {
-    currentExp = found;
-    select.value = found.name;
+  // Stop render loop
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = 0;
   }
+
+  // Stop camera
+  if (video.srcObject) {
+    (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    video.srcObject = null;
+  }
+
+  canvas.classList.add("hidden");
+  hudEl.classList.add("hidden");
+  menuEl.classList.remove("hidden");
+
+  let html = "<h1>face playground</h1>";
+  experiments.forEach((exp, i) => {
+    html += `<div class="item"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
+  });
+  html += `<div class="hint">press a number to start</div>`;
+  menuEl.innerHTML = html;
 }
 
-select.addEventListener("change", () => {
-  const found = experiments.find((e) => e.name === select.value);
-  if (found) {
-    currentExp = found;
+// -- Enter an experiment --
+async function enterExperiment(index: number) {
+  if (index < 0 || index >= experiments.length) return;
+
+  currentExp = experiments[index];
+  menuEl.classList.add("hidden");
+  canvas.classList.remove("hidden");
+  hudEl.classList.remove("hidden");
+
+  // Show loading state
+  resize();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f0";
+  ctx.font = "20px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("starting camera...", canvas.width / 2, canvas.height / 2);
+
+  // Init camera
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: 1280, height: 720, facingMode: "user" },
+    audio: false,
+  });
+  video.srcObject = stream;
+  await video.play();
+  cameraReady = true;
+
+  // Init FaceMesh (once, reuse across experiments)
+  if (!faceMesh) {
+    faceMesh = new FaceMesh({
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`,
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    faceMesh.onResults((results: Results) => {
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        latestLandmarks = results.multiFaceLandmarks[0];
+      } else {
+        latestLandmarks = null;
+      }
+    });
+    await faceMesh.initialize();
+  }
+
+  currentExp.setup(ctx, canvas.width, canvas.height);
+  lastTime = performance.now();
+  frameCount = 0;
+  renderLoop();
+}
+
+// -- Resize --
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  if (currentExp) {
     currentExp.setup(ctx, canvas.width, canvas.height);
-    // Update URL without reload
-    const url = new URL(location.href);
-    url.searchParams.set("exp", found.name);
-    history.replaceState(null, "", url.toString());
   }
-});
+}
+window.addEventListener("resize", resize);
 
-// -- Screenshot on 's' key --
+// -- Render loop --
+function renderLoop() {
+  if (!currentExp || !faceMesh) return;
+
+  const now = performance.now();
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  // FPS
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    fpsEl.textContent = `${Math.round(1 / dt)} fps`;
+  }
+
+  // Draw camera feed mirrored
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (cameraReady) {
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Experiment update + draw
+  currentExp.update(latestLandmarks, dt);
+  currentExp.draw(ctx, canvas.width, canvas.height);
+
+  // Send frame to FaceMesh
+  if (video.readyState >= 2) {
+    faceMesh.send({ image: video });
+  }
+
+  animFrameId = requestAnimationFrame(renderLoop);
+}
+
+// -- Keyboard handler --
 document.addEventListener("keydown", (e) => {
-  if (e.key === "s" && !e.metaKey && !e.ctrlKey) {
+  // Number keys: select experiment from menu
+  const num = parseInt(e.key);
+  if (!currentExp && num >= 1 && num <= experiments.length) {
+    enterExperiment(num - 1);
+    return;
+  }
+
+  // Escape: back to menu
+  if (e.key === "Escape" && currentExp) {
+    showMenu();
+    return;
+  }
+
+  // Screenshot
+  if (e.key === "s" && !e.metaKey && !e.ctrlKey && currentExp) {
     const link = document.createElement("a");
     link.download = `face-${currentExp.name}-${Date.now()}.png`;
     link.href = canvas.toDataURL("image/png");
@@ -61,97 +179,5 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// -- Resize canvas to fill window --
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  currentExp.setup(ctx, canvas.width, canvas.height);
-}
-window.addEventListener("resize", resize);
-
-// -- Init webcam --
-async function initCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 1280, height: 720, facingMode: "user" },
-    audio: false,
-  });
-  video.srcObject = stream;
-  await video.play();
-}
-
-// -- Init FaceMesh --
-function initFaceMesh(): FaceMesh {
-  const faceMesh = new FaceMesh({
-    locateFile: (file) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`,
-  });
-
-  faceMesh.setOptions({
-    maxNumFaces: 1,
-    refineLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-  });
-
-  faceMesh.onResults((results: Results) => {
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      latestLandmarks = results.multiFaceLandmarks[0];
-    } else {
-      latestLandmarks = null;
-    }
-  });
-
-  return faceMesh;
-}
-
-// -- Render loop --
-function renderLoop(faceMesh: FaceMesh) {
-  const now = performance.now();
-  const dt = (now - lastTime) / 1000;
-  lastTime = now;
-
-  // FPS counter
-  frameCount++;
-  if (frameCount % 30 === 0) {
-    fpsDisplay = Math.round(1 / dt);
-    fpsEl.textContent = `${fpsDisplay} fps`;
-  }
-
-  // Clear and draw camera feed
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Draw video mirrored
-  ctx.save();
-  ctx.translate(canvas.width, 0);
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  ctx.restore();
-
-  // Update + draw current experiment
-  currentExp.update(latestLandmarks, dt);
-  currentExp.draw(ctx, canvas.width, canvas.height);
-
-  // Send frame to FaceMesh (async, results come via callback)
-  if (video.readyState >= 2) {
-    faceMesh.send({ image: video });
-  }
-
-  requestAnimationFrame(() => renderLoop(faceMesh));
-}
-
 // -- Boot --
-async function main() {
-  resize();
-  await initCamera();
-  const faceMesh = initFaceMesh();
-  await faceMesh.initialize();
-  currentExp.setup(ctx, canvas.width, canvas.height);
-  renderLoop(faceMesh);
-}
-
-main().catch((err) => {
-  document.body.style.color = "red";
-  document.body.style.padding = "20px";
-  document.body.style.fontFamily = "monospace";
-  document.body.textContent = `Error: ${err.message}`;
-  console.error(err);
-});
+showMenu();
