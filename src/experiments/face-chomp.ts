@@ -1,13 +1,21 @@
 import type { Experiment, Landmarks } from "../types";
 
-const NOSE_TIP = 1;
+// Lip landmarks for mouth tracking
+const UPPER_LIP = 13;
+const LOWER_LIP = 14;
+// Nose bridge to chin for normalizing mouth openness
+const NOSE_BRIDGE = 6;
+const CHIN = 152;
+
 const SMOOTH = 0.6;
+const MOUTH_SMOOTH = 0.5;
 const PLAYER_R = 20;
 const FRUIT_R = 14;
 const SKULL_R = 16;
 const FRUIT_COUNT = 3;
 const SKULL_COUNT = 2;
 const SKULL_SPEED = 0.06; // normalized units per second
+const MOUTH_OPEN_THRESHOLD = 0.15; // fraction of face height
 
 interface Thing {
   x: number; // 0..1 normalized
@@ -23,6 +31,7 @@ let fruits: Thing[] = [];
 let skulls: Thing[] = [];
 let alive = true;
 let tracking = false;
+let mouthOpen = 0; // 0 = closed, 1 = fully open
 let deathTime = 0;
 let w = 0;
 let h = 0;
@@ -60,6 +69,7 @@ function reset() {
   py = 0.5;
   score = 0;
   alive = true;
+  mouthOpen = 0;
   fruits = [];
   skulls = [];
   for (let i = 0; i < FRUIT_COUNT; i++) fruits.push(spawnFruit());
@@ -81,14 +91,28 @@ export const faceChomp: Experiment = {
       return;
     }
 
-    // Track nose
     tracking = !!landmarks;
     if (landmarks) {
-      const nose = landmarks[NOSE_TIP];
-      const targetX = 1 - nose.x; // mirror
-      const targetY = nose.y;
-      px = Math.max(0, Math.min(1, px * SMOOTH + targetX * (1 - SMOOTH)));
-      py = Math.max(0, Math.min(1, py * SMOOTH + targetY * (1 - SMOOTH)));
+      const upper = landmarks[UPPER_LIP];
+      const lower = landmarks[LOWER_LIP];
+      const bridge = landmarks[NOSE_BRIDGE];
+      const chin = landmarks[CHIN];
+
+      // Mouth center position
+      const mouthX = 1 - (upper.x + lower.x) / 2; // mirror
+      const mouthY = (upper.y + lower.y) / 2;
+
+      // Mouth openness: lip gap normalized by face height
+      const faceH = Math.abs(chin.y - bridge.y);
+      const lipGap = Math.abs(lower.y - upper.y);
+      const rawOpen = Math.min(1, lipGap / (faceH * MOUTH_OPEN_THRESHOLD));
+      mouthOpen = mouthOpen * MOUTH_SMOOTH + rawOpen * (1 - MOUTH_SMOOTH);
+
+      // Only move when mouth is closed
+      if (mouthOpen < 0.3) {
+        px = Math.max(0, Math.min(1, px * SMOOTH + mouthX * (1 - SMOOTH)));
+        py = Math.max(0, Math.min(1, py * SMOOTH + mouthY * (1 - SMOOTH)));
+      }
     }
 
     // Move skulls, bounce off edges
@@ -101,14 +125,15 @@ export const faceChomp: Experiment = {
       s.y = Math.max(0.05, Math.min(0.95, s.y));
     }
 
-    // Check fruit collection
-    for (let i = fruits.length - 1; i >= 0; i--) {
-      if (distPx(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
-        score++;
-        fruits[i] = spawnFruit();
-        // Every 5 points, add another skull
-        if (score % 5 === 0) {
-          skulls.push(spawnSkull());
+    // Check fruit collection — only when mouth is open
+    if (mouthOpen > 0.3) {
+      for (let i = fruits.length - 1; i >= 0; i--) {
+        if (distPx(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
+          score++;
+          fruits[i] = spawnFruit();
+          if (score % 5 === 0) {
+            skulls.push(spawnSkull());
+          }
         }
       }
     }
@@ -145,18 +170,15 @@ export const faceChomp: Experiment = {
     for (const s of skulls) {
       const sx = s.x * w;
       const sy = s.y * h;
-      // Head
       ctx.beginPath();
       ctx.arc(sx, sy, SKULL_R, 0, Math.PI * 2);
       ctx.fillStyle = "#f44";
       ctx.fill();
-      // Eyes
       ctx.fillStyle = "#000";
       ctx.beginPath();
       ctx.arc(sx - 5, sy - 3, 3, 0, Math.PI * 2);
       ctx.arc(sx + 5, sy - 3, 3, 0, Math.PI * 2);
       ctx.fill();
-      // Mouth
       ctx.beginPath();
       ctx.moveTo(sx - 6, sy + 6);
       ctx.lineTo(sx + 6, sy + 6);
@@ -165,16 +187,17 @@ export const faceChomp: Experiment = {
       ctx.stroke();
     }
 
-    // Player
+    // Player — mouth angle matches your mouth
     const cx = px * w;
     const cy = py * h;
     if (alive) {
-      // Open mouth effect based on movement
+      const mouthAngle = canMove ? 0 : 0.8;
       ctx.beginPath();
-      ctx.arc(cx, cy, PLAYER_R, 0.3, Math.PI * 2 - 0.3);
+      ctx.arc(cx, cy, PLAYER_R, mouthAngle, Math.PI * 2 - mouthAngle);
       ctx.lineTo(cx, cy);
       ctx.closePath();
-      ctx.fillStyle = tracking ? "#ff0" : "#666";
+      const canMove = mouthOpen < 0.3;
+      ctx.fillStyle = !tracking ? "#666" : canMove ? "#ff0" : "#aa0";
       ctx.fill();
       // Eye
       ctx.beginPath();
@@ -182,7 +205,6 @@ export const faceChomp: Experiment = {
       ctx.fillStyle = "#000";
       ctx.fill();
     } else {
-      // Dead
       ctx.beginPath();
       ctx.arc(cx, cy, PLAYER_R, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
