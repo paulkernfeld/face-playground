@@ -22,6 +22,7 @@ let score = 0;
 let fruits: Thing[] = [];
 let skulls: Thing[] = [];
 let alive = true;
+let tracking = false;
 let deathTime = 0;
 let w = 0;
 let h = 0;
@@ -76,6 +77,7 @@ export const faceChomp: Experiment = {
     }
 
     // Track nose
+    tracking = !!landmarks;
     if (landmarks) {
       const nose = landmarks[NOSE_TIP];
       const targetX = 1 - nose.x; // mirror
@@ -169,7 +171,7 @@ export const faceChomp: Experiment = {
       ctx.arc(cx, cy, PLAYER_R, 0.3, Math.PI * 2 - 0.3);
       ctx.lineTo(cx, cy);
       ctx.closePath();
-      ctx.fillStyle = "#ff0";
+      ctx.fillStyle = tracking ? "#ff0" : "#666";
       ctx.fill();
       // Eye
       ctx.beginPath();

@@ -10,6 +10,7 @@ const SMOOTH = 0.7;
 
 let trail: { x: number; y: number }[] = [];
 const TRAIL_LEN = 20;
+let tracking = false;
 
 export const headCursor: Experiment = {
   name: "head cursor",
@@ -21,6 +22,7 @@ export const headCursor: Experiment = {
   },
 
   update(landmarks: Landmarks | null, _dt: number) {
+    tracking = !!landmarks;
     if (!landmarks) return;
     const nose = landmarks[NOSE_TIP];
     // Mirror X so moving right moves cursor right
@@ -50,12 +52,13 @@ export const headCursor: Experiment = {
     const cy = cursorY * h;
     ctx.beginPath();
     ctx.arc(cx, cy, 18, 0, Math.PI * 2);
-    ctx.strokeStyle = "#0f0";
+    const color = tracking ? "#0f0" : "#666";
+    ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-    ctx.fillStyle = "#0f0";
+    ctx.fillStyle = color;
     ctx.fill();
 
     // Crosshair lines
@@ -68,7 +71,7 @@ export const headCursor: Experiment = {
     ctx.lineTo(cx, cy - 10);
     ctx.moveTo(cx, cy + 10);
     ctx.lineTo(cx, cy + 28);
-    ctx.strokeStyle = "#0f0";
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.stroke();
   },
