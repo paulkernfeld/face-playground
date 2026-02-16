@@ -15,6 +15,9 @@ const SKULL_R = 16;
 const FRUIT_COUNT = 3;
 const SKULL_COUNT = 2;
 const SKULL_SPEED = 0.06; // normalized units per second
+const HUNTER_SPEED = 0.04; // slower but homing
+const HUNTER_FIRST_AT = 10; // score when first hunter spawns
+const HUNTER_EVERY = 10; // spawn another hunter every N points after that
 const MOUTH_OPEN_THRESHOLD = 0.15; // fraction of face height
 
 interface Thing {
@@ -22,6 +25,7 @@ interface Thing {
   y: number;
   vx: number;
   vy: number;
+  homing?: boolean;
 }
 
 let px = 0.5;
@@ -49,12 +53,12 @@ function spawnFruit(): Thing {
   return { ...randPos(), vx: 0, vy: 0 };
 }
 
-function spawnSkull(): Thing {
+function spawnSkull(homing = false): Thing {
   let pos;
   do {
     pos = randPos();
   } while (distPx(pos.x, pos.y, px, py) < (PLAYER_R + SKULL_R) * 4);
-  return { ...pos, ...randDir(SKULL_SPEED) };
+  return { ...pos, ...randDir(homing ? HUNTER_SPEED : SKULL_SPEED), homing };
 }
 
 // Distance in pixels between two normalized positions
@@ -115,14 +119,44 @@ export const faceChomp: Experiment = {
       }
     }
 
-    // Move skulls, bounce off edges
+    // Move skulls
     for (const s of skulls) {
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      if (s.x < 0.05 || s.x > 0.95) s.vx *= -1;
-      if (s.y < 0.05 || s.y > 0.95) s.vy *= -1;
-      s.x = Math.max(0.05, Math.min(0.95, s.x));
-      s.y = Math.max(0.05, Math.min(0.95, s.y));
+      if (s.homing) {
+        // Move toward player
+        let dx = px - s.x;
+        let dy = py - s.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0.001) {
+          dx /= len;
+          dy /= len;
+        }
+        // Repel from other hunters
+        for (const other of skulls) {
+          if (other === s || !other.homing) continue;
+          const sx = s.x - other.x;
+          const sy = s.y - other.y;
+          const sd = Math.sqrt(sx * sx + sy * sy);
+          if (sd < 0.15 && sd > 0.001) {
+            const repel = 0.3 / sd;
+            dx += (sx / sd) * repel;
+            dy += (sy / sd) * repel;
+          }
+        }
+        // Normalize and apply
+        const flen = Math.sqrt(dx * dx + dy * dy);
+        if (flen > 0.001) {
+          s.x += (dx / flen) * HUNTER_SPEED * dt;
+          s.y += (dy / flen) * HUNTER_SPEED * dt;
+        }
+      } else {
+        // Bounce off edges
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        if (s.x < 0.05 || s.x > 0.95) s.vx *= -1;
+        if (s.y < 0.05 || s.y > 0.95) s.vy *= -1;
+        s.x = Math.max(0.05, Math.min(0.95, s.x));
+        s.y = Math.max(0.05, Math.min(0.95, s.y));
+      }
     }
 
     // Check fruit collection — only when mouth is open
@@ -131,7 +165,9 @@ export const faceChomp: Experiment = {
         if (distPx(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
           score++;
           fruits[i] = spawnFruit();
-          if (score % 5 === 0) {
+          if (score >= HUNTER_FIRST_AT && (score - HUNTER_FIRST_AT) % HUNTER_EVERY === 0) {
+            skulls.push(spawnSkull(true));
+          } else if (score % 5 === 0) {
             skulls.push(spawnSkull());
           }
         }
@@ -172,7 +208,7 @@ export const faceChomp: Experiment = {
       const sy = s.y * h;
       ctx.beginPath();
       ctx.arc(sx, sy, SKULL_R, 0, Math.PI * 2);
-      ctx.fillStyle = "#f44";
+      ctx.fillStyle = s.homing ? "#a0f" : "#f44";
       ctx.fill();
       ctx.fillStyle = "#000";
       ctx.beginPath();
@@ -191,12 +227,12 @@ export const faceChomp: Experiment = {
     const cx = px * w;
     const cy = py * h;
     if (alive) {
+      const canMove = mouthOpen < 0.3;
       const mouthAngle = canMove ? 0 : 0.8;
       ctx.beginPath();
       ctx.arc(cx, cy, PLAYER_R, mouthAngle, Math.PI * 2 - mouthAngle);
       ctx.lineTo(cx, cy);
       ctx.closePath();
-      const canMove = mouthOpen < 0.3;
       ctx.fillStyle = !tracking ? "#666" : canMove ? "#ff0" : "#aa0";
       ctx.fill();
       // Eye
