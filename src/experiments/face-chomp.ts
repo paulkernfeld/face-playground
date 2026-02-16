@@ -9,6 +9,8 @@ const CHIN = 152;
 
 const SMOOTH = 0.6;
 const MOUTH_SMOOTH = 0.5;
+const MAX_SPEED_CLOSED = 1.0; // normalized units per second
+const MAX_SPEED_OPEN = 0.03; // crawl speed when mouth open
 const PLAYER_R = 20;
 const FRUIT_R = 14;
 const SKULL_R = 16;
@@ -112,11 +114,20 @@ export const faceChomp: Experiment = {
       const rawOpen = Math.min(1, lipGap / (faceH * MOUTH_OPEN_THRESHOLD));
       mouthOpen = mouthOpen * MOUTH_SMOOTH + rawOpen * (1 - MOUTH_SMOOTH);
 
-      // Only move when mouth is closed
-      if (mouthOpen < 0.3) {
-        px = Math.max(0, Math.min(1, px * SMOOTH + mouthX * (1 - SMOOTH)));
-        py = Math.max(0, Math.min(1, py * SMOOTH + mouthY * (1 - SMOOTH)));
+      // Move toward mouth position, speed capped by mouth state
+      const maxSpeed = mouthOpen < 0.3 ? MAX_SPEED_CLOSED : MAX_SPEED_OPEN;
+      const targetX = Math.max(0, Math.min(1, px * SMOOTH + mouthX * (1 - SMOOTH)));
+      const targetY = Math.max(0, Math.min(1, py * SMOOTH + mouthY * (1 - SMOOTH)));
+      let dx = targetX - px;
+      let dy = targetY - py;
+      const moveDist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = maxSpeed * dt;
+      if (moveDist > maxDist && moveDist > 0.0001) {
+        dx = (dx / moveDist) * maxDist;
+        dy = (dy / moveDist) * maxDist;
       }
+      px = Math.max(0, Math.min(1, px + dx));
+      py = Math.max(0, Math.min(1, py + dy));
     }
 
     // Move skulls
