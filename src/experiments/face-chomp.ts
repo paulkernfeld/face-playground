@@ -110,7 +110,7 @@ export const faceChomp: Experiment = {
     }
 
     // Check skull collision
-    const hitR = (PLAYER_R + SKULL_R) / Math.min(w, h);
+    const hitR = Math.abs(PLAYER_R - SKULL_R) / Math.min(w, h);
     for (const s of skulls) {
       if (dist(px, py, s.x, s.y) < hitR) {
         alive = false;

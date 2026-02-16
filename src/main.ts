@@ -19,8 +19,19 @@ const fpsEl = document.getElementById("fps") as HTMLSpanElement;
 // -- State --
 let currentExp: Experiment | null = null;
 let latestLandmarks: Landmarks | null = null;
+let rawLandmarks: Landmarks | null = null;
 let faceMesh: FaceMesh | null = null;
 let showVideo = false;
+
+// Remap landmarks from a narrower range to 0..1 so you don't have to
+// push your face to the very edge of the camera to reach screen edges.
+const MARGIN = 0.05;
+function remap(v: number): number {
+  return (v - MARGIN) / (1 - 2 * MARGIN);
+}
+function remapLandmarks(raw: Landmarks): Landmarks {
+  return raw.map((l) => ({ x: remap(l.x), y: remap(l.y), z: l.z }));
+}
 
 // -- Build menu --
 function showMenu() {
@@ -85,8 +96,10 @@ async function enterExperiment(index: number) {
     });
     faceMesh.onResults((results: Results) => {
       if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        latestLandmarks = results.multiFaceLandmarks[0];
+        rawLandmarks = results.multiFaceLandmarks[0];
+        latestLandmarks = remapLandmarks(rawLandmarks);
       } else {
+        rawLandmarks = null;
         latestLandmarks = null;
       }
     });
@@ -133,27 +146,30 @@ async function runLoop() {
       await faceMesh.send({ image: video });
     }
 
-    // Clear + optionally draw video and mesh
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear + optionally draw video and mesh (zoomed to match remapped coords)
+    const cw = canvas.width;
+    const ch = canvas.height;
+    ctx.clearRect(0, 0, cw, ch);
     if (showVideo) {
+      const s = 1 / (1 - 2 * MARGIN);
+      const ox = MARGIN * s * cw;
+      const oy = MARGIN * s * ch;
       ctx.save();
-      ctx.translate(canvas.width, 0);
+      ctx.translate(cw, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, -ox, -oy, s * cw, s * ch);
       ctx.restore();
 
-      // Draw face mesh overlay
-      if (latestLandmarks) {
-        const w = canvas.width;
-        const h = canvas.height;
+      // Draw face mesh overlay (remapped to match game coordinates)
+      if (rawLandmarks) {
         ctx.strokeStyle = "rgba(0, 255, 100, 0.2)";
         ctx.lineWidth = 0.5;
         for (const [start, end] of FACEMESH_TESSELATION) {
-          const a = latestLandmarks[start];
-          const b = latestLandmarks[end];
+          const a = rawLandmarks[start];
+          const b = rawLandmarks[end];
           ctx.beginPath();
-          ctx.moveTo((1 - a.x) * w, a.y * h);
-          ctx.lineTo((1 - b.x) * w, b.y * h);
+          ctx.moveTo((1 - remap(a.x)) * cw, remap(a.y) * ch);
+          ctx.lineTo((1 - remap(b.x)) * cw, remap(b.y) * ch);
           ctx.stroke();
         }
       }
