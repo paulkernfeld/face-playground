@@ -6,9 +6,10 @@ import {
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
+import { blendshapeDebug } from "./experiments/blendshape-debug";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp];
+const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug];
 
 // -- DOM --
 const video = document.getElementById("webcam") as HTMLVideoElement;
