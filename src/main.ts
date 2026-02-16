@@ -1,5 +1,5 @@
 import "./style.css";
-import { FaceMesh } from "@mediapipe/face_mesh";
+import { FaceMesh, FACEMESH_TESSELATION } from "@mediapipe/face_mesh";
 import type { Results } from "@mediapipe/face_mesh";
 import type { Experiment, Landmarks } from "./types";
 import { headCursor } from "./experiments/head-cursor";
@@ -133,7 +133,7 @@ async function runLoop() {
       await faceMesh.send({ image: video });
     }
 
-    // Clear + optionally draw video
+    // Clear + optionally draw video and mesh
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (showVideo) {
       ctx.save();
@@ -141,6 +141,22 @@ async function runLoop() {
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       ctx.restore();
+
+      // Draw face mesh overlay
+      if (latestLandmarks) {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.strokeStyle = "rgba(0, 255, 100, 0.2)";
+        ctx.lineWidth = 0.5;
+        for (const [start, end] of FACEMESH_TESSELATION) {
+          const a = latestLandmarks[start];
+          const b = latestLandmarks[end];
+          ctx.beginPath();
+          ctx.moveTo((1 - a.x) * w, a.y * h);
+          ctx.lineTo((1 - b.x) * w, b.y * h);
+          ctx.stroke();
+        }
+      }
     }
 
     // Update + draw with fresh landmarks

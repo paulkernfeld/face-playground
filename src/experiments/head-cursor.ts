@@ -28,8 +28,8 @@ export const headCursor: Experiment = {
     // Mirror X so moving right moves cursor right
     const targetX = 1 - nose.x;
     const targetY = nose.y;
-    cursorX = cursorX * SMOOTH + targetX * (1 - SMOOTH);
-    cursorY = cursorY * SMOOTH + targetY * (1 - SMOOTH);
+    cursorX = Math.max(0, Math.min(1, cursorX * SMOOTH + targetX * (1 - SMOOTH)));
+    cursorY = Math.max(0, Math.min(1, cursorY * SMOOTH + targetY * (1 - SMOOTH)));
 
     trail.push({ x: cursorX, y: cursorY });
     if (trail.length > TRAIL_LEN) trail.shift();

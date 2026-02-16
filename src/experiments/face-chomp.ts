@@ -82,8 +82,8 @@ export const faceChomp: Experiment = {
       const nose = landmarks[NOSE_TIP];
       const targetX = 1 - nose.x; // mirror
       const targetY = nose.y;
-      px = px * SMOOTH + targetX * (1 - SMOOTH);
-      py = py * SMOOTH + targetY * (1 - SMOOTH);
+      px = Math.max(0, Math.min(1, px * SMOOTH + targetX * (1 - SMOOTH)));
+      py = Math.max(0, Math.min(1, py * SMOOTH + targetY * (1 - SMOOTH)));
     }
 
     // Move skulls, bounce off edges
