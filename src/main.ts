@@ -3,9 +3,10 @@ import { FaceMesh } from "@mediapipe/face_mesh";
 import type { Results } from "@mediapipe/face_mesh";
 import type { Experiment, Landmarks } from "./types";
 import { headCursor } from "./experiments/head-cursor";
+import { faceChomp } from "./experiments/face-chomp";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor];
+const experiments: Experiment[] = [headCursor, faceChomp];
 
 // -- DOM --
 const video = document.getElementById("webcam") as HTMLVideoElement;
@@ -23,6 +24,7 @@ let frameCount = 0;
 let faceMesh: FaceMesh | null = null;
 let cameraReady = false;
 let animFrameId = 0;
+let showVideo = false;
 
 // -- Build menu --
 function showMenu() {
@@ -50,7 +52,7 @@ function showMenu() {
   experiments.forEach((exp, i) => {
     html += `<div class="item"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
   });
-  html += `<div class="hint">press a number to start</div>`;
+  html += `<div class="hint">press a number to start // esc=back  v=video  s=screenshot</div>`;
   menuEl.innerHTML = html;
 }
 
@@ -133,9 +135,9 @@ function renderLoop() {
     fpsEl.textContent = `${Math.round(1 / dt)} fps`;
   }
 
-  // Draw camera feed mirrored
+  // Draw camera feed mirrored (toggle with 'v')
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (cameraReady) {
+  if (cameraReady && showVideo) {
     ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
@@ -167,6 +169,12 @@ document.addEventListener("keydown", (e) => {
   // Escape: back to menu
   if (e.key === "Escape" && currentExp) {
     showMenu();
+    return;
+  }
+
+  // Toggle video feed
+  if (e.key === "v" && currentExp) {
+    showVideo = !showVideo;
     return;
   }
 
