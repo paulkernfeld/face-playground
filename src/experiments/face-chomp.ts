@@ -13,6 +13,7 @@ const MAX_SPEED_CLOSED = 1.0; // normalized units per second
 const MAX_SPEED_OPEN = 0.03; // crawl speed when mouth open
 const PLAYER_R = 20;
 const FRUIT_R = 14;
+const PELLET_R = 18;
 const SKULL_R = 16;
 const FRUIT_COUNT = 3;
 const SKULL_COUNT = 2;
@@ -21,6 +22,10 @@ const HUNTER_SPEED = 0.04; // slower but homing
 const HUNTER_FIRST_AT = 10; // score when first hunter spawns
 const HUNTER_EVERY = 10; // spawn another hunter every N points after that
 const MOUTH_OPEN_THRESHOLD = 0.15; // fraction of face height
+const POWER_DURATION = 5000; // ms of power mode
+const POWER_WARN = 1500; // ms before end to start flashing
+const PELLET_EVERY = 8; // spawn a pellet every N fruit eaten
+const PELLET_LIFETIME = 8000; // ms before pellet disappears
 
 interface Thing {
   x: number; // 0..1 normalized
@@ -35,10 +40,14 @@ let py = 0.5;
 let score = 0;
 let fruits: Thing[] = [];
 let skulls: Thing[] = [];
+let pellet: Thing | null = null;
+let pelletSpawnedAt = 0;
 let alive = true;
 let tracking = false;
 let mouthOpen = 0; // 0 = closed, 1 = fully open
 let deathTime = 0;
+let powerUntil = 0; // timestamp when power mode ends
+let fruitsEaten = 0;
 let w = 0;
 let h = 0;
 
@@ -70,12 +79,20 @@ function distPx(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function isPowered(): boolean {
+  return performance.now() < powerUntil;
+}
+
 function reset() {
   px = 0.5;
   py = 0.5;
   score = 0;
   alive = true;
   mouthOpen = 0;
+  powerUntil = 0;
+  fruitsEaten = 0;
+  pellet = null;
+  pelletSpawnedAt = 0;
   fruits = [];
   skulls = [];
   for (let i = 0; i < FRUIT_COUNT; i++) fruits.push(spawnFruit());
@@ -131,33 +148,47 @@ export const faceChomp: Experiment = {
     }
 
     // Move skulls
+    const powered = isPowered();
     for (const s of skulls) {
       if (s.homing) {
-        // Move toward player
-        let dx = px - s.x;
-        let dy = py - s.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len > 0.001) {
-          dx /= len;
-          dy /= len;
-        }
-        // Repel from other hunters
-        for (const other of skulls) {
-          if (other === s || !other.homing) continue;
-          const sx = s.x - other.x;
-          const sy = s.y - other.y;
-          const sd = Math.sqrt(sx * sx + sy * sy);
-          if (sd < 0.15 && sd > 0.001) {
-            const repel = 0.3 / sd;
-            dx += (sx / sd) * repel;
-            dy += (sy / sd) * repel;
+        if (powered) {
+          // Flee from player when powered
+          let dx = s.x - px;
+          let dy = s.y - py;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0.001) {
+            s.x += (dx / len) * HUNTER_SPEED * 0.7 * dt;
+            s.y += (dy / len) * HUNTER_SPEED * 0.7 * dt;
           }
-        }
-        // Normalize and apply
-        const flen = Math.sqrt(dx * dx + dy * dy);
-        if (flen > 0.001) {
-          s.x += (dx / flen) * HUNTER_SPEED * dt;
-          s.y += (dy / flen) * HUNTER_SPEED * dt;
+          s.x = Math.max(0.05, Math.min(0.95, s.x));
+          s.y = Math.max(0.05, Math.min(0.95, s.y));
+        } else {
+          // Move toward player
+          let dx = px - s.x;
+          let dy = py - s.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0.001) {
+            dx /= len;
+            dy /= len;
+          }
+          // Repel from other hunters
+          for (const other of skulls) {
+            if (other === s || !other.homing) continue;
+            const sx = s.x - other.x;
+            const sy = s.y - other.y;
+            const sd = Math.sqrt(sx * sx + sy * sy);
+            if (sd < 0.15 && sd > 0.001) {
+              const repel = 0.3 / sd;
+              dx += (sx / sd) * repel;
+              dy += (sy / sd) * repel;
+            }
+          }
+          // Normalize and apply
+          const flen = Math.sqrt(dx * dx + dy * dy);
+          if (flen > 0.001) {
+            s.x += (dx / flen) * HUNTER_SPEED * dt;
+            s.y += (dy / flen) * HUNTER_SPEED * dt;
+          }
         }
       } else {
         // Bounce off edges
@@ -170,26 +201,54 @@ export const faceChomp: Experiment = {
       }
     }
 
+    // Expire power pellet
+    if (pellet && performance.now() - pelletSpawnedAt > PELLET_LIFETIME) {
+      pellet = null;
+    }
+
     // Check fruit collection — only when mouth is open
     if (mouthOpen > 0.3) {
       for (let i = fruits.length - 1; i >= 0; i--) {
         if (distPx(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
+          fruitsEaten++;
           score++;
           fruits[i] = spawnFruit();
-          if (score >= HUNTER_FIRST_AT && (score - HUNTER_FIRST_AT) % HUNTER_EVERY === 0) {
+          if (fruitsEaten >= HUNTER_FIRST_AT && (fruitsEaten - HUNTER_FIRST_AT) % HUNTER_EVERY === 0) {
             skulls.push(spawnSkull(true));
-          } else if (score % 5 === 0) {
+          } else if (fruitsEaten % 5 === 0) {
             skulls.push(spawnSkull());
+          }
+          // Spawn a power pellet every N fruit
+          if (!pellet && !powered && fruitsEaten % PELLET_EVERY === 0) {
+            pellet = spawnFruit();
+            pelletSpawnedAt = performance.now();
+          }
+        }
+      }
+
+      // Check power pellet collection
+      if (pellet && distPx(px, py, pellet.x, pellet.y) < PLAYER_R + PELLET_R) {
+        powerUntil = performance.now() + POWER_DURATION;
+        pellet = null;
+      }
+
+      // Eat skulls when powered
+      if (powered) {
+        for (let i = skulls.length - 1; i >= 0; i--) {
+          if (distPx(px, py, skulls[i].x, skulls[i].y) < PLAYER_R + SKULL_R) {
+            skulls.splice(i, 1);
           }
         }
       }
     }
 
-    // Check skull collision
-    for (const s of skulls) {
-      if (distPx(px, py, s.x, s.y) < PLAYER_R + SKULL_R) {
-        alive = false;
-        deathTime = performance.now();
+    // Check skull collision (only when not powered)
+    if (!powered) {
+      for (const s of skulls) {
+        if (distPx(px, py, s.x, s.y) < PLAYER_R + SKULL_R) {
+          alive = false;
+          deathTime = performance.now();
+        }
       }
     }
   },
@@ -197,6 +256,9 @@ export const faceChomp: Experiment = {
   draw(ctx, ww, hh) {
     w = ww;
     h = hh;
+    const powered = isPowered();
+    const powerRemaining = powerUntil - performance.now();
+    const warning = powered && powerRemaining < POWER_WARN;
 
     // Fruits
     for (const f of fruits) {
@@ -213,13 +275,32 @@ export const faceChomp: Experiment = {
       ctx.stroke();
     }
 
+    // Power pellet
+    if (pellet) {
+      const pulse = 0.8 + Math.sin(performance.now() / 150) * 0.2;
+      ctx.beginPath();
+      ctx.arc(pellet.x * w, pellet.y * h, PELLET_R * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pellet.x * w, pellet.y * h, PELLET_R * pulse * 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff0";
+      ctx.fill();
+    }
+
     // Skulls
     for (const s of skulls) {
       const sx = s.x * w;
       const sy = s.y * h;
       ctx.beginPath();
       ctx.arc(sx, sy, SKULL_R, 0, Math.PI * 2);
-      ctx.fillStyle = s.homing ? "#a0f" : "#f44";
+      if (powered) {
+        // Scared skulls: blue, flash white during warning
+        const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
+        ctx.fillStyle = flash ? "#fff" : "#22f";
+      } else {
+        ctx.fillStyle = s.homing ? "#a0f" : "#f44";
+      }
       ctx.fill();
       ctx.fillStyle = "#000";
       ctx.beginPath();
@@ -227,14 +308,23 @@ export const faceChomp: Experiment = {
       ctx.arc(sx + 5, sy - 3, 3, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(sx - 6, sy + 6);
-      ctx.lineTo(sx + 6, sy + 6);
+      if (powered) {
+        // Wavy scared mouth
+        ctx.moveTo(sx - 6, sy + 5);
+        ctx.lineTo(sx - 3, sy + 7);
+        ctx.lineTo(sx, sy + 5);
+        ctx.lineTo(sx + 3, sy + 7);
+        ctx.lineTo(sx + 6, sy + 5);
+      } else {
+        ctx.moveTo(sx - 6, sy + 6);
+        ctx.lineTo(sx + 6, sy + 6);
+      }
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 2;
       ctx.stroke();
     }
 
-    // Player — mouth angle matches your mouth
+    // Player
     const cx = px * w;
     const cy = py * h;
     if (alive) {
@@ -244,7 +334,15 @@ export const faceChomp: Experiment = {
       ctx.arc(cx, cy, PLAYER_R, mouthAngle, Math.PI * 2 - mouthAngle);
       ctx.lineTo(cx, cy);
       ctx.closePath();
-      ctx.fillStyle = !tracking ? "#666" : canMove ? "#ff0" : "#aa0";
+      if (!tracking) {
+        ctx.fillStyle = "#666";
+      } else if (powered) {
+        // Flash during warning
+        const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
+        ctx.fillStyle = flash ? "#ff0" : "#4cf";
+      } else {
+        ctx.fillStyle = canMove ? "#ff0" : "#aa0";
+      }
       ctx.fill();
       // Eye
       ctx.beginPath();
