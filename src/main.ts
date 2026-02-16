@@ -19,24 +19,13 @@ const fpsEl = document.getElementById("fps") as HTMLSpanElement;
 // -- State --
 let currentExp: Experiment | null = null;
 let latestLandmarks: Landmarks | null = null;
-let lastTime = performance.now();
-let frameCount = 0;
 let faceMesh: FaceMesh | null = null;
-let cameraReady = false;
-let animFrameId = 0;
 let showVideo = false;
 
 // -- Build menu --
 function showMenu() {
   currentExp = null;
-  cameraReady = false;
   latestLandmarks = null;
-
-  // Stop render loop
-  if (animFrameId) {
-    cancelAnimationFrame(animFrameId);
-    animFrameId = 0;
-  }
 
   // Stop camera
   if (video.srcObject) {
@@ -74,14 +63,13 @@ async function enterExperiment(index: number) {
   ctx.textAlign = "center";
   ctx.fillText("starting camera...", canvas.width / 2, canvas.height / 2);
 
-  // Init camera
+  // Init camera at lower res — FaceMesh downscales internally anyway
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 1280, height: 720, facingMode: "user" },
+    video: { width: 640, height: 480, facingMode: "user" },
     audio: false,
   });
   video.srcObject = stream;
   await video.play();
-  cameraReady = true;
 
   // Init FaceMesh (once, reuse across experiments)
   if (!faceMesh) {
@@ -106,9 +94,7 @@ async function enterExperiment(index: number) {
   }
 
   currentExp.setup(ctx, canvas.width, canvas.height);
-  lastTime = performance.now();
-  frameCount = 0;
-  renderLoop();
+  await runLoop();
 }
 
 // -- Resize --
@@ -121,40 +107,46 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 
-// -- Render loop --
-function renderLoop() {
-  if (!currentExp || !faceMesh) return;
+// -- Main loop: one frame at a time --
+async function runLoop() {
+  let lastTime = performance.now();
+  let frameCount = 0;
 
-  const now = performance.now();
-  const dt = (now - lastTime) / 1000;
-  lastTime = now;
+  while (currentExp) {
+    // Wait for next animation frame
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    if (!currentExp || !faceMesh) break;
 
-  // FPS
-  frameCount++;
-  if (frameCount % 30 === 0) {
-    fpsEl.textContent = `${Math.round(1 / dt)} fps`;
+    // Timing
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    // FPS
+    frameCount++;
+    if (frameCount % 30 === 0) {
+      fpsEl.textContent = `${Math.round(1 / dt)} fps`;
+    }
+
+    // Send frame to FaceMesh and wait for result
+    if (video.readyState >= 2) {
+      await faceMesh.send({ image: video });
+    }
+
+    // Clear + optionally draw video
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (showVideo) {
+      ctx.save();
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    // Update + draw with fresh landmarks
+    currentExp.update(latestLandmarks, dt);
+    currentExp.draw(ctx, canvas.width, canvas.height);
   }
-
-  // Draw camera feed mirrored (toggle with 'v')
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (cameraReady && showVideo) {
-    ctx.save();
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
-  }
-
-  // Experiment update + draw
-  currentExp.update(latestLandmarks, dt);
-  currentExp.draw(ctx, canvas.width, canvas.height);
-
-  // Send frame to FaceMesh
-  if (video.readyState >= 2) {
-    faceMesh.send({ image: video });
-  }
-
-  animFrameId = requestAnimationFrame(renderLoop);
 }
 
 // -- Keyboard handler --
