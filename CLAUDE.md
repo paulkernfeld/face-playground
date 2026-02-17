@@ -67,6 +67,13 @@ interface Experiment {
 ### Performance
 - Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
 
+### Sketchy/rough.js
+- **Text not rendering?** — check if `GameRoughCanvas` scale wrapper is interfering with native `ctx.fillText` calls in experiments
+
+### Testing & Sharing
+- Test on phone (mobile Safari, Android Chrome)
+- Send to friends for feedback
+
 ### Investigate
 - iPad field of view seems much larger than desktop — check camera resolution handling
 - Weird behavior when iPad is orientation-locked — test and fix
