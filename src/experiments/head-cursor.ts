@@ -1,5 +1,6 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
+import { pxText } from '../px-text';
 
 // Nose tip is landmark index 1
 const NOSE_TIP = 1;
@@ -97,13 +98,10 @@ export const headCursor: Experiment = {
     rc.line(cx, cy - 0.35, cx, cy - 0.12, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 104 });
     rc.line(cx, cy + 0.12, cx, cy + 0.35, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 105 });
 
-    // Head angle debug
+    // Head angle debug (show near cursor)
     if (tracking) {
       const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
-      ctx.font = "0.25px monospace";
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#888";
-      ctx.fillText(`pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, 0.3, h - 0.3);
+      pxText(ctx, `pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, cx, cy - 0.5, "0.2px monospace", "#888", "center");
     }
   },
 };

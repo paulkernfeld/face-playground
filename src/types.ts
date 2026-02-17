@@ -11,8 +11,9 @@ export type Blendshapes = Map<string, number>;
 export interface FaceData {
   landmarks: Landmarks;
   blendshapes: Blendshapes;
-  headPitch: number; // radians, positive = looking down
-  headYaw: number; // radians, positive = turned right
+  headPitch: number; // radians (rotX), positive = looking down
+  headYaw: number; // radians (rotY), positive = turned left
+  rawTransformMatrix?: number[]; // 4x4 column-major facial transformation matrix
 }
 
 export interface Experiment {
