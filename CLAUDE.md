@@ -50,44 +50,24 @@ interface Experiment {
 
 ## TODO
 
-### High Priority
 - **Switch to pixel-scale coordinates**: Replace 16x9 game-unit system with pixel-scale coords (~100s-1000s). Fixes two problems at once: (1) `ctx.fillText` silently fails at sub-pixel font sizes in real browsers, (2) rough.js hardcoded offsets explode at small scales, eliminating need for `GameRoughCanvas` wrapper. All experiments + main.ts need updating. Landmarks would be delivered in pixel coords instead of game units.
-
-### Bugs
+- **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math. Use `?fixture` mode + saved fixtures to verify.
 - **Server requires trailing slash**: Make dev server and deployed site work without trailing slash in URL
-
-### Chomp experiment
-- Show nose cursor behind pacman (z-order — cursor should render under pacman sprite)
-- End game: keep score on screen until user interacts, then start new game
-- Game start: wait for user interaction before beginning (don't auto-start)
-- Add hint text about closing mouth to move when pacman is far from nose
-- Idea: fruit bounces off you when mouth is closed (maybe too evil but interesting)
-
-### UI/Controls
-- Rename "video" button to "debug" or "developer" — make it a clear toggle
-- Bundle FPS display into debug mode (hide from normal view)
-- Move pitch/yaw readout into debug mode too (not useful for normal play)
-- Unified color scheme across all experiments
-- Do we still need the screenshot button? Evaluate if it's used enough to justify UI space
-- Highlight chomp game in the menu UI (it's the most polished — make it stand out)
-
-### Offline / PWA
-- Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
-
-### Performance
-- Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
-
-### Sketchy/rough.js
+- **Chomp: nose cursor z-order** — cursor should render under pacman sprite
+- **Chomp: game start/end flow** — keep score on screen until user interacts, then start new game; wait for user interaction before beginning (don't auto-start)
+- **Chomp: hint text** — add hint about closing mouth to move when pacman is far from nose
+- **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
+- **UI: rename "video" to "debug"** — make it a clear toggle
+- **UI: bundle dev info into debug mode** — FPS display, pitch/yaw readout (hide from normal view)
+- **UI: unified color scheme** across all experiments
+- **UI: evaluate screenshot button** — is it used enough to justify UI space?
+- **UI: highlight chomp in menu** — it's the most polished, make it stand out
+- **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
+- **Performance**: Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
 - **Text not rendering** — `ctx.fillText` at sub-pixel font sizes (e.g. 0.3px in game units) silently fails in real browsers. Fix: use `pxText()` helper (see `fixture.ts`) to convert to pixel coords before drawing text. This likely affects all experiments using fillText in game-unit space.
-- **Consider changing coordinate system** to pixel-scale so rough.js works natively without the `GameRoughCanvas` wrapper (currently 16x9 game units; rough.js assumes pixel-scale coords ~100s-1000s)
-
-### Testing & Sharing
-- Test on phone (mobile Safari, Android Chrome)
+- **iPad**: field of view seems much larger than desktop — check camera resolution handling
+- **iPad**: weird behavior when orientation-locked — test and fix
 - Send to friends for feedback
-
-### Investigate
-- iPad field of view seems much larger than desktop — check camera resolution handling
-- Weird behavior when iPad is orientation-locked — test and fix
 
 ## Design Direction
 
