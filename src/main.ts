@@ -9,6 +9,8 @@ import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
 import { blendshapeDebug } from "./experiments/blendshape-debug";
+import { captureExperiment } from "./capture";
+import { startAngleTest } from "./angle-test";
 
 // -- Registry --
 const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug];
@@ -70,6 +72,7 @@ btnBar.innerHTML = `
   <button id="btn-back">&#x2190; back${key("q")}</button>
   <button id="btn-video">video${key("v")}</button>
   <button id="btn-screenshot">screenshot${key("s")}</button>
+  <button id="btn-capture" class="hidden">capture${key("space")}</button>
 `;
 document.body.appendChild(btnBar);
 
@@ -86,6 +89,9 @@ document.getElementById("btn-screenshot")!.addEventListener("click", () => {
     link.href = canvas.toDataURL("image/png");
     link.click();
   }
+});
+document.getElementById("btn-capture")!.addEventListener("click", () => {
+  (window as any).__capture?.();
 });
 
 // -- Build menu --
@@ -162,10 +168,16 @@ function showMenu() {
 }
 
 // -- Enter an experiment --
-async function enterExperiment(index: number) {
-  if (index < 0 || index >= experiments.length) return;
+async function enterExperiment(expOrIndex: number | Experiment) {
+  let exp: Experiment;
+  if (typeof expOrIndex === 'number') {
+    if (expOrIndex < 0 || expOrIndex >= experiments.length) return;
+    exp = experiments[expOrIndex];
+  } else {
+    exp = expOrIndex;
+  }
 
-  currentExp = experiments[index];
+  currentExp = exp;
   menuEl.classList.add("hidden");
 
   // Show loading overlay
@@ -293,15 +305,18 @@ async function runLoop() {
         }
 
         // Extract head pose from transformation matrix
+        let rawMatrix: number[] | undefined;
         if (result.facialTransformationMatrixes && result.facialTransformationMatrixes.length > 0) {
           const m = result.facialTransformationMatrixes[0].data;
-          // 4x4 column-major matrix, extract rotation
+          rawMatrix = Array.from(m);
+          // 4x4 column-major matrix, ZYX Euler decomposition
           // m[0],m[1],m[2] = col0, m[4],m[5],m[6] = col1, m[8],m[9],m[10] = col2
-          headPitch = Math.atan2(-m[8], Math.sqrt(m[9] * m[9] + m[10] * m[10]));
-          headYaw = Math.atan2(m[4], m[0]);
+          // Verified via fixture captures: rotX=pitch, rotY=yaw, rotZ=roll
+          headPitch = Math.atan2(m[6], m[10]);          // rotX: nod up/down
+          headYaw = Math.atan2(-m[2], Math.sqrt(m[0] * m[0] + m[1] * m[1])); // rotY: turn L/R
         }
 
-        latestFace = { landmarks: gameUnits, blendshapes, headPitch, headYaw };
+        latestFace = { landmarks: gameUnits, blendshapes, headPitch, headYaw, rawTransformMatrix: rawMatrix };
         lastFaceSeenAt = now;
         // Track nose position for warning overlay
         lastNoseX = gameUnits[1].x;
@@ -370,8 +385,8 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   if (!latestFace && lastFaceSeenAt > 0 && now - lastFaceSeenAt < 3000) {
     msg = "face lost";
   } else if (latestFace) {
-    if (headPitch > ANGLE_THRESHOLD) msg = "angle your face down";
-    else if (headPitch < -ANGLE_THRESHOLD) msg = "angle your face up";
+    if (headPitch > ANGLE_THRESHOLD) msg = "angle your face up";
+    else if (headPitch < -ANGLE_THRESHOLD) msg = "angle your face down";
     else if (Math.abs(headYaw) > ANGLE_THRESHOLD) msg = "face the camera";
   }
   if (!msg) return;
@@ -429,8 +444,16 @@ document.addEventListener("keydown", (e) => {
 });
 
 // -- Boot --
-const demoParam = new URLSearchParams(window.location.search).get("demo");
-if (demoParam !== null) {
+const params = new URLSearchParams(window.location.search);
+const angleTestParam = params.get("angleTest");
+const captureParam = params.get("capture");
+const demoParam = params.get("demo");
+if (angleTestParam !== null) {
+  startAngleTest();
+} else if (captureParam !== null) {
+  document.getElementById("btn-capture")!.classList.remove("hidden");
+  enterExperiment(captureExperiment);
+} else if (demoParam !== null) {
   const idx = parseInt(demoParam) - 1;
   if (idx >= 0 && idx < experiments.length) {
     // Demo mode: render one frame with fake state, no camera needed
