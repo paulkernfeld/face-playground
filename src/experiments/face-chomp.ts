@@ -1,6 +1,5 @@
 import type { Experiment, FaceData } from "../types";
-import rough from 'roughjs';
-import type { RoughCanvas } from 'roughjs/bin/canvas';
+import { GameRoughCanvas } from '../rough-scale';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -68,7 +67,7 @@ let fruitsEaten = 0;
 let nearFruitButClosed = false;
 let w = 16;
 let h = 9;
-let rc: RoughCanvas;
+let rc: GameRoughCanvas;
 let seedCounter = 1000;
 
 function randPos(): { x: number; y: number } {
@@ -133,7 +132,7 @@ export const faceChomp: Experiment = {
   setup(ctx, ww, hh) {
     w = ww;
     h = hh;
-    rc = rough.canvas(ctx.canvas);
+    rc = new GameRoughCanvas(ctx.canvas);
     reset();
   },
 
@@ -327,6 +326,30 @@ export const faceChomp: Experiment = {
         }
       }
     }
+  },
+
+  demo() {
+    px = 5;
+    py = 4;
+    score = 17;
+    alive = true;
+    tracking = true;
+    mouthOpen = 0.7; // mouth wide open
+    fruitsEaten = 17;
+    nearFruitButClosed = false;
+    fruits = [
+      { x: 7, y: 3, vx: 0, vy: 0, seed: 10 },
+      { x: 11, y: 5.5, vx: 0, vy: 0, seed: 11 },
+      { x: 3, y: 6, vx: 0, vy: 0, seed: 12 },
+    ];
+    skulls = [
+      { x: 9, y: 2.5, vx: 0.5, vy: 0.3, seed: 20 },              // bouncer
+      { x: 12, y: 4, vx: 0, vy: 0, seed: 21, homing: true },       // hunter
+      { x: 7.5, y: 5.8, vx: 0, vy: 0, seed: 22, guardian: true, orbitAngle: 1.2 }, // guardian
+    ];
+    pellet = { x: 13, y: 2, vx: 0, vy: 0, seed: 30 };
+    pelletSpawnedAt = performance.now();
+    powerUntil = 0;
   },
 
   draw(ctx, ww, hh) {

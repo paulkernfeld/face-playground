@@ -4,7 +4,7 @@ import {
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
 import rough from 'roughjs';
-import type { RoughCanvas } from 'roughjs/bin/canvas';
+import { GameRoughCanvas } from './rough-scale';
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
@@ -34,7 +34,7 @@ let latestFace: FaceData | null = null;
 let rawLandmarks: Landmarks | null = null;
 let landmarker: FaceLandmarker | null = null;
 let showVideo = false;
-let rc: RoughCanvas;
+let rc: GameRoughCanvas;
 
 // -- Game-unit coordinate system (16x9) --
 const GAME_W = 16;
@@ -220,7 +220,7 @@ function resize() {
   scale = Math.min(canvas.width / GAME_W, canvas.height / GAME_H);
   gameX = (canvas.width - GAME_W * scale) / 2;
   gameY = (canvas.height - GAME_H * scale) / 2;
-  rc = rough.canvas(canvas);
+  rc = new GameRoughCanvas(canvas);
   if (currentExp) {
     currentExp.setup(ctx, GAME_W, GAME_H);
   }
@@ -407,4 +407,32 @@ document.addEventListener("keydown", (e) => {
 });
 
 // -- Boot --
-showMenu();
+const demoParam = new URLSearchParams(window.location.search).get("demo");
+if (demoParam !== null) {
+  const idx = parseInt(demoParam) - 1;
+  if (idx >= 0 && idx < experiments.length) {
+    // Demo mode: render one frame with fake state, no camera needed
+    currentExp = experiments[idx];
+    menuEl.classList.add("hidden");
+    canvas.classList.remove("hidden");
+    resize();
+    currentExp.setup(ctx, GAME_W, GAME_H);
+    currentExp.demo?.();
+
+    // Render one frame in game-unit space
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(gameX, gameY);
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.rect(0, 0, GAME_W, GAME_H);
+    ctx.clip();
+    currentExp.draw(ctx, GAME_W, GAME_H);
+    ctx.restore();
+  } else {
+    showMenu();
+  }
+} else {
+  showMenu();
+}

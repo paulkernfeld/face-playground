@@ -1,6 +1,5 @@
 import type { Experiment, FaceData } from "../types";
-import rough from 'roughjs';
-import type { RoughCanvas } from 'roughjs/bin/canvas';
+import { GameRoughCanvas } from '../rough-scale';
 
 // Nose tip is landmark index 1
 const NOSE_TIP = 1;
@@ -17,7 +16,7 @@ let w = 16;
 let h = 9;
 let pitch = 0;
 let yaw = 0;
-let rc: RoughCanvas;
+let rc: GameRoughCanvas;
 
 export const headCursor: Experiment = {
   name: "head cursor",
@@ -28,7 +27,7 @@ export const headCursor: Experiment = {
     cursorX = w / 2;
     cursorY = h / 2;
     trail = [];
-    rc = rough.canvas(ctx.canvas);
+    rc = new GameRoughCanvas(ctx.canvas);
   },
 
   update(face: FaceData | null, _dt: number) {
@@ -46,6 +45,23 @@ export const headCursor: Experiment = {
 
     trail.push({ x: cursorX, y: cursorY });
     if (trail.length > TRAIL_LEN) trail.shift();
+  },
+
+  demo() {
+    tracking = true;
+    cursorX = 10;
+    cursorY = 3.5;
+    pitch = 0.1;
+    yaw = -0.05;
+    // Build a curving trail
+    trail = [];
+    for (let i = 0; i < TRAIL_LEN; i++) {
+      const t = i / TRAIL_LEN;
+      trail.push({
+        x: 4 + t * 6,
+        y: 5.5 - Math.sin(t * Math.PI) * 2,
+      });
+    }
   },
 
   draw(ctx, _w, _h) {

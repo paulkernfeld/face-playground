@@ -1,6 +1,5 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
-import rough from 'roughjs';
-import type { RoughCanvas } from 'roughjs/bin/canvas';
+import { GameRoughCanvas } from '../rough-scale';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -68,14 +67,27 @@ const MAYBE_SET = new Set(MAYBE_NAMES);
 
 let latestBlendshapes: Blendshapes = new Map();
 let showAll = false;
-let rc: RoughCanvas;
+let rc: GameRoughCanvas;
 
 export const blendshapeDebug: Experiment = {
   name: "tension",
 
   setup(ctx) {
     latestBlendshapes = new Map();
-    rc = rough.canvas(ctx.canvas);
+    rc = new GameRoughCanvas(ctx.canvas);
+  },
+
+  demo() {
+    latestBlendshapes = new Map<string, number>([
+      ["jawClench", 0.65],
+      ["browDownLeft", 0.45],
+      ["browDownRight", 0.42],
+      ["eyeSquintLeft", 0.38],
+      ["eyeSquintRight", 0.35],
+      ["mouthPressLeft", 0.2],
+      ["jawOpen", 0.15],
+      ["cheekPuff", 0.1],
+    ]);
   },
 
   update(face: FaceData | null, _dt: number) {
