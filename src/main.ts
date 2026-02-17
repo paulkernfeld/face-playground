@@ -11,6 +11,12 @@ import { blendshapeDebug } from "./experiments/blendshape-debug";
 // -- Registry --
 const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug];
 
+const experimentMeta = [
+  { icon: '🎯', desc: 'move a cursor with your nose', color: '#FF6B6B' },
+  { icon: '😮', desc: 'pac-man, controlled with your face', color: '#FFD93D' },
+  { icon: '🧘', desc: 'monitor & release facial tension', color: '#2EC4B6' },
+];
+
 // -- DOM --
 const video = document.getElementById("webcam") as HTMLVideoElement;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -18,6 +24,7 @@ const ctx = canvas.getContext("2d")!;
 const menuEl = document.getElementById("menu") as HTMLDivElement;
 const hudEl = document.getElementById("hud") as HTMLDivElement;
 const fpsEl = document.getElementById("fps") as HTMLSpanElement;
+const loadingEl = document.getElementById("loading") as HTMLDivElement;
 
 // -- State --
 let currentExp: Experiment | null = null;
@@ -92,17 +99,37 @@ function showMenu() {
   canvas.classList.add("hidden");
   hudEl.classList.add("hidden");
   btnBar.classList.add("hidden");
+  loadingEl.classList.add("hidden");
   menuEl.classList.remove("hidden");
 
-  let html = "<h1>face playground</h1>";
+  let html = `
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="menu-content">
+      <h1 class="menu-title"><span class="t-face">face </span><span class="t-play">playground</span></h1>
+      <p class="menu-subtitle">experiments for your face</p>
+      <div class="experiment-grid">`;
+
   experiments.forEach((exp, i) => {
-    html += `<div class="item" data-exp="${i}"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
+    const m = experimentMeta[i];
+    html += `
+        <button class="experiment-card" data-exp="${i}" style="--accent: ${m.color}">
+          <span class="card-icon">${m.icon}</span>
+          <span class="card-name">${exp.name}</span>
+          <span class="card-desc">${m.desc}</span>
+          <span class="card-key">${i + 1}</span>
+        </button>`;
   });
-  html += `<div class="hint">tap or press a number to start</div>`;
+
+  html += `
+      </div>
+      <p class="menu-hint">tap a card or press 1\u2013${experiments.length}</p>
+    </div>`;
+
   menuEl.innerHTML = html;
 
-  // Touch support: make menu items tappable
-  menuEl.querySelectorAll(".item[data-exp]").forEach((el) => {
+  menuEl.querySelectorAll(".experiment-card[data-exp]").forEach((el) => {
     (el as HTMLElement).addEventListener("click", () => {
       const idx = parseInt((el as HTMLElement).dataset.exp!);
       enterExperiment(idx);
@@ -116,22 +143,12 @@ async function enterExperiment(index: number) {
 
   currentExp = experiments[index];
   menuEl.classList.add("hidden");
-  canvas.classList.remove("hidden");
-  hudEl.classList.remove("hidden");
-  btnBar.classList.remove("hidden");
 
-  // Show loading state
-  resize();
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
-  ctx.translate(gameX, gameY);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = "#0f0";
-  ctx.font = "0.3px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText("starting camera...", GAME_W / 2, GAME_H / 2);
-  ctx.restore();
+  // Show loading overlay
+  loadingEl.classList.remove("hidden");
+  loadingEl.innerHTML = `
+    <div class="loading-icon">📸</div>
+    <div class="loading-text">starting camera\u2026</div>`;
 
   // Init camera at lower res
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -143,6 +160,8 @@ async function enterExperiment(index: number) {
 
   // Init FaceLandmarker (once, reuse across experiments)
   if (!landmarker) {
+    const txt = loadingEl.querySelector(".loading-text");
+    if (txt) txt.textContent = "loading face model\u2026";
     const fileset = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
     );
@@ -158,6 +177,13 @@ async function enterExperiment(index: number) {
       numFaces: 1,
     });
   }
+
+  // Hide loading, show canvas
+  loadingEl.classList.add("hidden");
+  canvas.classList.remove("hidden");
+  hudEl.classList.remove("hidden");
+  btnBar.classList.remove("hidden");
+  resize();
 
   currentExp.setup(ctx, GAME_W, GAME_H);
   await runLoop();
@@ -239,8 +265,8 @@ async function runLoop() {
       }
     }
 
-    // Clear full canvas (black letterbox)
-    ctx.fillStyle = "#000";
+    // Clear full canvas (dark letterbox)
+    ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Enter game-unit transform
@@ -306,18 +332,18 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   const tx = Math.max(1.5, Math.min(GAME_W - 1.5, lastNoseX));
   const ty = Math.max(0.8, lastNoseY - 0.6);
 
-  ctx.font = "bold 0.3px monospace";
+  ctx.font = "600 0.28px Sora, sans-serif";
   ctx.textAlign = "center";
   const metrics = ctx.measureText(msg);
-  const pw = metrics.width + 0.3;
+  const pw = metrics.width + 0.35;
   const ph = 0.45;
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.fillStyle = "rgba(15, 15, 35, 0.7)";
   ctx.beginPath();
-  ctx.roundRect(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, 0.1);
+  ctx.roundRect(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, 0.12);
   ctx.fill();
 
-  ctx.fillStyle = "#fa0";
+  ctx.fillStyle = "#FFD93D";
   ctx.fillText(msg, tx, ty + 0.08);
 }
 
