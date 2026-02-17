@@ -3,6 +3,7 @@ import {
   FaceLandmarker,
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
+import rough from 'roughjs';
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
@@ -102,12 +103,13 @@ function showMenu() {
   loadingEl.classList.add("hidden");
   menuEl.classList.remove("hidden");
 
+  const tilt = (Math.random() - 0.5) * 3; // -1.5 to 1.5 degrees
   let html = `
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
     <div class="menu-content">
-      <h1 class="menu-title"><span class="t-face">face </span><span class="t-play">playground</span></h1>
+      <h1 class="menu-title" style="transform: rotate(${tilt}deg)"><span class="t-face">face </span><span class="t-play">playground</span></h1>
       <p class="menu-subtitle">experiments for your face</p>
       <div class="experiment-grid">`;
 
@@ -128,6 +130,25 @@ function showMenu() {
     </div>`;
 
   menuEl.innerHTML = html;
+
+  // Add rough.js sketchy borders to each card
+  menuEl.querySelectorAll(".experiment-card").forEach((card) => {
+    const el = card as HTMLElement;
+    const color = el.style.getPropertyValue('--accent');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'card-sketch');
+    svg.setAttribute('viewBox', '0 0 100 130');
+    const rc = rough.svg(svg);
+    // Border
+    svg.appendChild(rc.rectangle(3, 3, 94, 124, {
+      stroke: color, strokeWidth: 2, roughness: 1.5, bowing: 1, fill: 'none',
+    }));
+    // Top accent line
+    svg.appendChild(rc.line(3, 8, 97, 8, {
+      stroke: color, strokeWidth: 3, roughness: 1.2,
+    }));
+    el.appendChild(svg);
+  });
 
   menuEl.querySelectorAll(".experiment-card[data-exp]").forEach((el) => {
     (el as HTMLElement).addEventListener("click", () => {
