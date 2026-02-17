@@ -30,6 +30,17 @@ interface Experiment {
 
 **Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. Coordinates are mirrored (x inverted) so moving right moves cursor right.
 
+## Experiment ideas
+
+- **Gradual movement ramp-up**: Start from stillness, progressively increase allowed movement range — practice controlled transitions from rest to activity
+- **Red light green light**: Freeze body position on red, move on green — uses landmark delta detection to catch movement during freeze phases
+- **Distraction gaze test**: Place visual distractors on screen, use iris/gaze tracking to detect when eyes get pulled to them — train focus control
+- **Kasina**: Meditation/visual experience with light patterns or geometric visualizations
+- **DDR (Dance Dance Revolution)**: Rhythm game — move head to match arrow targets timed to music
+- **Posture tracking**: Detect and provide feedback on body posture (head tilt, forward lean, etc.)
+- **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
+- **Stretching/tai chi**: Movement guidance or pose matching for stretching exercises
+
 ## Constraints
 
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
