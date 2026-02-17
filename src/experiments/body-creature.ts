@@ -10,6 +10,7 @@ const L_WRIST = 15, R_WRIST = 16;
 const L_HIP = 23, R_HIP = 24;
 const L_KNEE = 25, R_KNEE = 26;
 const L_ANKLE = 27, R_ANKLE = 28;
+const L_MOUTH = 9, R_MOUTH = 10;
 
 const SMOOTH = 0.5;
 
@@ -169,6 +170,7 @@ export const bodyCreature: Experiment = {
     set(L_HIP, 7, 5.5); set(R_HIP, 9, 5.5);
     set(L_KNEE, 6.5, 7); set(R_KNEE, 9.5, 7);
     set(L_ANKLE, 6, 8.5); set(R_ANKLE, 10, 8.5);
+    set(L_MOUTH, 7.6, 1.9); set(R_MOUTH, 8.4, 1.9);
     pts = fakePose;
     lPupilX = 7.5; lPupilY = 1.3;
     rPupilX = 8.5; rPupilY = 1.3;
@@ -233,24 +235,42 @@ export const bodyCreature: Experiment = {
     drawGooglyEye(p[L_EYE].x, p[L_EYE].y, lPupilX, lPupilY, 60);
     drawGooglyEye(p[R_EYE].x, p[R_EYE].y, rPupilX, rPupilY, 70);
 
-    // -- Party hat on head --
-    const nose = p[NOSE];
-    const hatH = 1.2;
-    const hatW = 0.8;
+    // -- Party hat on top of head --
+    const headCx = (p[L_EYE].x + p[R_EYE].x) / 2;
+    const eyeY = (p[L_EYE].y + p[R_EYE].y) / 2;
+    const faceH = p[NOSE].y - eyeY;
+    const headTopY = eyeY - faceH * 1.8;
+    const hatH = faceH * 3.5;
+    const hatW = faceH * 1.6;
     rc.polygon([
-      [nose.x, nose.y - hatH],
-      [nose.x - hatW / 2, nose.y],
-      [nose.x + hatW / 2, nose.y],
-      [nose.x, nose.y - hatH],
+      [headCx, headTopY - hatH],
+      [headCx - hatW / 2, headTopY],
+      [headCx + hatW / 2, headTopY],
+      [headCx, headTopY - hatH],
     ], {
       fill: HAT_COLOR, fillStyle: 'zigzag', fillWeight: 0.03,
       stroke: '#333', strokeWidth: 0.04, roughness: 1.5, seed: 80,
     });
     // Pom-pom on top
-    rc.circle(nose.x, nose.y - hatH, 0.3, {
+    rc.circle(headCx, headTopY - hatH, 0.3, {
       fill: '#FF6B6B', fillStyle: 'solid',
       stroke: 'none', roughness: 1, seed: 81,
     });
+
+    // -- Smile --
+    const lm = p[L_MOUTH];
+    const rm = p[R_MOUTH];
+    const mouthCx = (lm.x + rm.x) / 2;
+    const mouthCy = (lm.y + rm.y) / 2;
+    const mouthW = Math.abs(rm.x - lm.x);
+    const smileDip = mouthW * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(lm.x, lm.y);
+    ctx.quadraticCurveTo(mouthCx, mouthCy + smileDip, rm.x, rm.y);
+    ctx.strokeStyle = '#FF6B6B';
+    ctx.lineWidth = 0.08;
+    ctx.lineCap = 'round';
+    ctx.stroke();
 
     // -- Sparkles (T-pose) --
     for (const s of sparks) {
