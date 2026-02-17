@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` — start Vite dev server with hot reload
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
+- `?demo=N` URL param — render experiment N with fake data, no camera needed (for screenshots/visual verification)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
 - Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 
@@ -25,6 +26,7 @@ interface Experiment {
   setup(ctx, w, h): void;
   update(face: FaceData | null, dt: number): void;
   draw(ctx, w, h): void;
+  demo?(): void;  // set up fake state for camera-free screenshots
 }
 ```
 
@@ -42,11 +44,38 @@ interface Experiment {
 - **Posture tracking**: Detect and provide feedback on body posture (head tilt, forward lean, etc.)
 - **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
 - **Stretching/tai chi**: Movement guidance or pose matching for stretching exercises
+- **Mindful coding Claude plugin**: Face-tracking awareness layer during coding sessions
+
+## TODO
+
+### Bugs
+- **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math.
+- **Server requires trailing slash**: Make dev server and deployed site work without trailing slash in URL
+
+### Chomp experiment
+- Show nose cursor behind pacman (z-order — cursor should render under pacman sprite)
+- End game: keep score on screen until user interacts, then start new game
+- Game start: wait for user interaction before beginning (don't auto-start)
+- Add hint text about closing mouth to move when pacman is far from nose
+
+### UI/Controls
+- Rename "video" button to "debug" or "developer" — make it a clear toggle
+- Bundle FPS display into debug mode (hide from normal view)
+- Move pitch/yaw readout into debug mode too (not useful for normal play)
+- Unified color scheme across all experiments
+
+### Performance
+- Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
+
+### Investigate
+- iPad field of view seems much larger than desktop — check camera resolution handling
+- Weird behavior when iPad is orientation-locked — test and fix
 
 ## Design Direction
 
 - Playful, sketchy — intentionally unpolished, hand-drawn feel
 - Warm colors (coral, violet, teal), Fredoka + Sora fonts
+- rough.js for hand-drawn shapes — use `GameRoughCanvas` (`src/rough-scale.ts`), NOT raw `rough.canvas()`. Raw rough.js has hardcoded pixel-scale offsets that break in our 16x9 game-unit coordinate system.
 
 ## Constraints
 
