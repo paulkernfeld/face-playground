@@ -1,4 +1,5 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
+import { GameRoughCanvas } from '../rough-scale';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -66,12 +67,27 @@ const MAYBE_SET = new Set(MAYBE_NAMES);
 
 let latestBlendshapes: Blendshapes = new Map();
 let showAll = false;
+let rc: GameRoughCanvas;
 
 export const blendshapeDebug: Experiment = {
   name: "tension",
 
-  setup() {
+  setup(ctx) {
     latestBlendshapes = new Map();
+    rc = new GameRoughCanvas(ctx.canvas);
+  },
+
+  demo() {
+    latestBlendshapes = new Map<string, number>([
+      ["jawClench", 0.65],
+      ["browDownLeft", 0.45],
+      ["browDownRight", 0.42],
+      ["eyeSquintLeft", 0.38],
+      ["eyeSquintRight", 0.35],
+      ["mouthPressLeft", 0.2],
+      ["jawOpen", 0.15],
+      ["cheekPuff", 0.1],
+    ]);
   },
 
   update(face: FaceData | null, _dt: number) {
@@ -122,12 +138,19 @@ export const blendshapeDebug: Experiment = {
         ctx.fillStyle = "#fff";
         ctx.fillText(name, LEFT, y + 0.22);
 
-        // Bar
+        // Bar background
         const barX = LEFT + 3.0;
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(barX, y + 0.02, BAR_MAX, 0.25);
-        ctx.fillStyle = val > 0.5 ? "#f44" : "#f44" + "99";
-        ctx.fillRect(barX, y + 0.02, val * BAR_MAX, 0.25);
+        rc.rectangle(barX, y + 0.02, BAR_MAX, 0.25, {
+          fill: 'rgba(255,255,255,0.05)', fillStyle: 'solid', stroke: 'none',
+          roughness: 0.3, seed: i + 200,
+        });
+        // Bar fill
+        if (val * BAR_MAX > 0.01) {
+          rc.rectangle(barX, y + 0.02, val * BAR_MAX, 0.25, {
+            fill: val > 0.5 ? '#f44' : '#f4499', fillStyle: 'solid', stroke: 'none',
+            roughness: 0.8, seed: i + 300,
+          });
+        }
 
         // Value
         ctx.fillStyle = "#fff";
@@ -165,10 +188,16 @@ export const blendshapeDebug: Experiment = {
         ctx.fillText(name, LEFT, y + 0.2);
 
         const barX = LEFT + 3.0;
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(barX, y + 0.02, BAR_MAX, 0.22);
-        ctx.fillStyle = "#fa0" + "88";
-        ctx.fillRect(barX, y + 0.02, val * BAR_MAX, 0.22);
+        rc.rectangle(barX, y + 0.02, BAR_MAX, 0.22, {
+          fill: 'rgba(255,255,255,0.05)', fillStyle: 'solid', stroke: 'none',
+          roughness: 0.3, seed: i + 400,
+        });
+        if (val * BAR_MAX > 0.01) {
+          rc.rectangle(barX, y + 0.02, val * BAR_MAX, 0.22, {
+            fill: '#fa088', fillStyle: 'solid', stroke: 'none',
+            roughness: 0.8, seed: i + 500,
+          });
+        }
 
         ctx.fillStyle = "#ccc";
         ctx.font = "0.15px monospace";
@@ -203,11 +232,15 @@ export const blendshapeDebug: Experiment = {
         ctx.textAlign = "right";
         ctx.fillText(name, 2.75, y + ROW_H * 0.7);
 
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(2.85, y + 0.02, BAR_MAX, ROW_H - 0.05);
+        rc.rectangle(2.85, y + 0.02, BAR_MAX, ROW_H - 0.05, {
+          fill: 'rgba(255,255,255,0.05)', fillStyle: 'solid', stroke: 'none',
+          roughness: 0.3, seed: i + 600,
+        });
         if (val > 0.1) {
-          ctx.fillStyle = "#fa0" + "66";
-          ctx.fillRect(2.85, y + 0.02, val * BAR_MAX, ROW_H - 0.05);
+          rc.rectangle(2.85, y + 0.02, val * BAR_MAX, ROW_H - 0.05, {
+            fill: '#fa066', fillStyle: 'solid', stroke: 'none',
+            roughness: 0.8, seed: i + 700,
+          });
         }
       }
     }

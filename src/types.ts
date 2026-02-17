@@ -20,4 +20,6 @@ export interface Experiment {
   setup(ctx: CanvasRenderingContext2D, w: number, h: number): void;
   update(face: FaceData | null, dt: number): void;
   draw(ctx: CanvasRenderingContext2D, w: number, h: number): void;
+  /** Set up a representative scene for screenshots — no camera needed. */
+  demo?(): void;
 }

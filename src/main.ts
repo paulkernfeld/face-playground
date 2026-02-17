@@ -3,6 +3,8 @@ import {
   FaceLandmarker,
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
+import rough from 'roughjs';
+import { GameRoughCanvas } from './rough-scale';
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
@@ -32,6 +34,7 @@ let latestFace: FaceData | null = null;
 let rawLandmarks: Landmarks | null = null;
 let landmarker: FaceLandmarker | null = null;
 let showVideo = false;
+let rc: GameRoughCanvas;
 
 // -- Game-unit coordinate system (16x9) --
 const GAME_W = 16;
@@ -102,12 +105,13 @@ function showMenu() {
   loadingEl.classList.add("hidden");
   menuEl.classList.remove("hidden");
 
+  const tilt = (Math.random() - 0.5) * 3; // -1.5 to 1.5 degrees
   let html = `
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
     <div class="menu-content">
-      <h1 class="menu-title"><span class="t-face">face </span><span class="t-play">playground</span></h1>
+      <h1 class="menu-title" style="transform: rotate(${tilt}deg)"><span class="t-face">face </span><span class="t-play">playground</span></h1>
       <p class="menu-subtitle">experiments for your face</p>
       <div class="experiment-grid">`;
 
@@ -128,6 +132,26 @@ function showMenu() {
     </div>`;
 
   menuEl.innerHTML = html;
+
+  // Add rough.js sketchy borders to each card
+  menuEl.querySelectorAll(".experiment-card").forEach((card) => {
+    const el = card as HTMLElement;
+    const color = el.style.getPropertyValue('--accent');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'card-sketch');
+    svg.setAttribute('viewBox', '0 0 100 130');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const rc = rough.svg(svg);
+    // Border
+    svg.appendChild(rc.rectangle(3, 3, 94, 124, {
+      stroke: color, strokeWidth: 2, roughness: 1.5, bowing: 1, fill: 'none',
+    }));
+    // Top accent line
+    svg.appendChild(rc.line(3, 8, 97, 8, {
+      stroke: color, strokeWidth: 3, roughness: 1.2,
+    }));
+    el.appendChild(svg);
+  });
 
   menuEl.querySelectorAll(".experiment-card[data-exp]").forEach((el) => {
     (el as HTMLElement).addEventListener("click", () => {
@@ -218,6 +242,7 @@ function resize() {
   scale = Math.min(canvas.width / GAME_W, canvas.height / GAME_H);
   gameX = (canvas.width - GAME_W * scale) / 2;
   gameY = (canvas.height - GAME_H * scale) / 2;
+  rc = new GameRoughCanvas(canvas);
   if (currentExp) {
     currentExp.setup(ctx, GAME_W, GAME_H);
   }
@@ -360,10 +385,14 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   const pw = metrics.width + 0.35;
   const ph = 0.45;
 
-  ctx.fillStyle = "rgba(15, 15, 35, 0.7)";
-  ctx.beginPath();
-  ctx.roundRect(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, 0.12);
-  ctx.fill();
+  // Sketchy background pill
+  if (rc) {
+    rc.rectangle(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, {
+      fill: 'rgba(15, 15, 35, 0.7)', fillStyle: 'solid',
+      stroke: '#FFD93D', strokeWidth: 0.02,
+      roughness: 1.2, seed: 900,
+    });
+  }
 
   ctx.fillStyle = "#FFD93D";
   ctx.fillText(msg, tx, ty + 0.08);
@@ -400,4 +429,32 @@ document.addEventListener("keydown", (e) => {
 });
 
 // -- Boot --
-showMenu();
+const demoParam = new URLSearchParams(window.location.search).get("demo");
+if (demoParam !== null) {
+  const idx = parseInt(demoParam) - 1;
+  if (idx >= 0 && idx < experiments.length) {
+    // Demo mode: render one frame with fake state, no camera needed
+    currentExp = experiments[idx];
+    menuEl.classList.add("hidden");
+    canvas.classList.remove("hidden");
+    resize();
+    currentExp.setup(ctx, GAME_W, GAME_H);
+    currentExp.demo?.();
+
+    // Render one frame in game-unit space
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(gameX, gameY);
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.rect(0, 0, GAME_W, GAME_H);
+    ctx.clip();
+    currentExp.draw(ctx, GAME_W, GAME_H);
+    ctx.restore();
+  } else {
+    showMenu();
+  }
+} else {
+  showMenu();
+}
