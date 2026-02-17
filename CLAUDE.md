@@ -69,6 +69,7 @@ interface Experiment {
 
 ### Sketchy/rough.js
 - **Text not rendering?** — check if `GameRoughCanvas` scale wrapper is interfering with native `ctx.fillText` calls in experiments
+- **Consider changing coordinate system** to pixel-scale so rough.js works natively without the `GameRoughCanvas` wrapper (currently 16x9 game units; rough.js assumes pixel-scale coords ~100s-1000s)
 
 ### Testing & Sharing
 - Test on phone (mobile Safari, Android Chrome)
