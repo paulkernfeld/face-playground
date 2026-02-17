@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
+- Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 
 ## Architecture
 
