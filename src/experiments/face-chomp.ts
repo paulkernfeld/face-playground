@@ -1,6 +1,8 @@
 import type { Experiment, FaceData } from "../types";
 
-// Lip landmarks for mouth tracking
+// Nose tip for position tracking
+const NOSE_TIP = 1;
+// Lip landmarks for mouth open/close detection
 const UPPER_LIP = 13;
 const LOWER_LIP = 14;
 // Nose bridge to chin for normalizing mouth openness
@@ -139,14 +141,15 @@ export const faceChomp: Experiment = {
     nearFruitButClosed = false;
 
     if (face) {
+      const nose = face.landmarks[NOSE_TIP];
       const upper = face.landmarks[UPPER_LIP];
       const lower = face.landmarks[LOWER_LIP];
       const bridge = face.landmarks[NOSE_BRIDGE];
       const chin = face.landmarks[CHIN];
 
-      // Mouth center position (already in game units)
-      const mouthX = w - (upper.x + lower.x) / 2; // mirror
-      const mouthY = (upper.y + lower.y) / 2;
+      // Nose position for movement (already in game units)
+      const noseX = w - nose.x; // mirror
+      const noseY = nose.y;
 
       // Mouth openness: lip gap normalized by face height
       const faceH = Math.abs(chin.y - bridge.y);
@@ -154,10 +157,10 @@ export const faceChomp: Experiment = {
       const rawOpen = Math.min(1, lipGap / (faceH * MOUTH_OPEN_THRESHOLD));
       mouthOpen = mouthOpen * MOUTH_SMOOTH + rawOpen * (1 - MOUTH_SMOOTH);
 
-      // Move toward mouth position, speed capped by mouth state
+      // Move toward nose position, speed capped by mouth state
       const maxSpeed = mouthOpen < 0.3 ? MAX_SPEED_CLOSED : MAX_SPEED_OPEN;
-      const targetX = Math.max(0, Math.min(w, px * SMOOTH + mouthX * (1 - SMOOTH)));
-      const targetY = Math.max(0, Math.min(h, py * SMOOTH + mouthY * (1 - SMOOTH)));
+      const targetX = Math.max(0, Math.min(w, px * SMOOTH + noseX * (1 - SMOOTH)));
+      const targetY = Math.max(0, Math.min(h, py * SMOOTH + noseY * (1 - SMOOTH)));
       let dx = targetX - px;
       let dy = targetY - py;
       const moveDist = Math.sqrt(dx * dx + dy * dy);
