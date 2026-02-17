@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   FaceLandmarker,
+  PoseLandmarker,
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
 import rough from 'roughjs';
@@ -9,16 +10,18 @@ import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
 import { blendshapeDebug } from "./experiments/blendshape-debug";
+import { bodyCreature } from "./experiments/body-creature";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug];
+const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature];
 
 const experimentMeta = [
   { icon: '🎯', desc: 'move a cursor with your nose', color: '#FF6B6B' },
   { icon: '😮', desc: 'pac-man, controlled with your face', color: '#FFD93D' },
   { icon: '🧘', desc: 'monitor & release facial tension', color: '#2EC4B6' },
+  { icon: '🧌', desc: 'a silly creature that follows your body', color: '#9B59B6' },
 ];
 
 // -- DOM --
@@ -35,6 +38,7 @@ let currentExp: Experiment | null = null;
 let latestFace: FaceData | null = null;
 let rawLandmarks: Landmarks | null = null;
 let landmarker: FaceLandmarker | null = null;
+let poseLandmarker: PoseLandmarker | null = null;
 let showVideo = false;
 let rc: GameRoughCanvas;
 
@@ -236,6 +240,24 @@ async function enterExperiment(expOrIndex: number | Experiment) {
     });
   }
 
+  // Init PoseLandmarker if this experiment needs it (lazy, one-time)
+  if (currentExp.updatePose && !poseLandmarker) {
+    const txt = loadingEl.querySelector(".loading-text");
+    if (txt) txt.textContent = "loading body model\u2026";
+    const poseFileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    poseLandmarker = await PoseLandmarker.createFromOptions(poseFileset, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numPoses: 1,
+    });
+  }
+
   // Hide loading, show canvas
   loadingEl.classList.add("hidden");
   canvas.classList.remove("hidden");
@@ -324,6 +346,22 @@ async function runLoop() {
       } else {
         rawLandmarks = null;
         latestFace = null;
+      }
+    }
+
+    // Detect pose landmarks (only if current experiment uses them)
+    if (currentExp.updatePose && poseLandmarker && video.readyState >= 2) {
+      const poseResult = poseLandmarker.detectForVideo(video, now);
+      if (poseResult.landmarks.length > 0) {
+        const rawPose = poseResult.landmarks[0];
+        const poseLandmarks = rawPose.map(l => ({
+          x: remap(l.x) * GAME_W,
+          y: remap(l.y) * GAME_H,
+          z: l.z,
+        }));
+        currentExp.updatePose(poseLandmarks, dt);
+      } else {
+        currentExp.updatePose(null, dt);
       }
     }
 

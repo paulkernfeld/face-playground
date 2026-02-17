@@ -34,6 +34,7 @@ export class GameRoughCanvas {
     if (!o) return {};
     const scaled = { ...o };
     if (scaled.strokeWidth !== undefined) scaled.strokeWidth *= S;
+    if (scaled.fillWeight !== undefined) scaled.fillWeight *= S;
     return scaled;
   }
 
@@ -58,6 +59,13 @@ export class GameRoughCanvas {
   arc(x: number, y: number, w: number, h: number, start: number, stop: number, closed: boolean, options?: Options) {
     this.wrap(() => {
       this.rc.arc(x * S, y * S, w * S, h * S, start, stop, closed, this.opts(options));
+    });
+  }
+
+  polygon(vertices: [number, number][], options?: Options) {
+    this.wrap(() => {
+      const scaled = vertices.map(([x, y]) => [x * S, y * S] as [number, number]);
+      this.rc.polygon(scaled, this.opts(options));
     });
   }
 }
