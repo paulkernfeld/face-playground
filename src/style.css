@@ -284,6 +284,23 @@ body {
   color: rgba(255, 255, 255, 0.6);
 }
 
+.camera-error-back {
+  margin-top: 20px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--coral);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.camera-error-back:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
 /* ---- HUD / FPS ---- */
 #hud {
   position: fixed;

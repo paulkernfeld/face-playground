@@ -151,10 +151,32 @@ async function enterExperiment(index: number) {
     <div class="loading-text">starting camera\u2026</div>`;
 
   // Init camera at lower res
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 640, height: 480, facingMode: "user" },
-    audio: false,
-  });
+  let stream: MediaStream;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("insecure-context");
+    }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: "user" },
+      audio: false,
+    });
+  } catch (err) {
+    let msg: string;
+    if (err instanceof Error && err.message === "insecure-context") {
+      msg = "camera requires HTTPS (or localhost)";
+    } else if (err instanceof DOMException && err.name === "NotAllowedError") {
+      msg = "camera permission was denied";
+    } else {
+      msg = "couldn\u2019t access the camera";
+    }
+    loadingEl.innerHTML = `
+      <div class="loading-icon">📷</div>
+      <div class="loading-text">${msg}</div>
+      <button class="camera-error-back">\u2190 back to menu</button>`;
+    loadingEl.querySelector(".camera-error-back")!.addEventListener("click", showMenu);
+    currentExp = null;
+    return;
+  }
   video.srcObject = stream;
   await video.play();
 

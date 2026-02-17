@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` — start Vite dev server with hot reload
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
+- `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
 
 ## Architecture
 
@@ -48,6 +49,8 @@ interface Experiment {
 
 ## Constraints
 
+- Playwright tests use `channel: "chrome"` (system Chrome) — downloaded Chromium requires macOS 12+
+- Headless Chrome has a fake camera, so `getUserMedia` succeeds — mock failures with `page.addInitScript`
 - Git worktrees go in `.worktrees/` (already in `.gitignore`)
 - When feasible, take a Playwright screenshot of completed visual features and open in Preview for user verification
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
