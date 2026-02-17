@@ -12,16 +12,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas overlay. Browser-only, Vite + TypeScript, no frameworks.
 
-**Core loop** (`src/main.ts`): Keyboard-driven menu → select experiment by number key → init webcam + FaceMesh → async render loop (`while (currentExp) { await rAF; await faceMesh.send(); update; draw }`). The loop awaits FaceMesh inference each frame to prevent send pileup. Press `q` to return to menu, `v` to toggle video feed, `s` for screenshot.
+**Core loop** (`src/main.ts`): Menu → select experiment → init webcam + FaceMesh → async render loop. Press `q` to return to menu, `v` to toggle video feed, `s` for screenshot. Touch button bar provides the same controls on mobile.
 
-**Landmark remapping**: Raw FaceMesh coordinates (0..1) are remapped with a 5% margin so experiments don't require pushing face to camera edges. Raw landmarks are kept separately for the mesh overlay so it aligns with the video feed.
+**Coordinate system**: Experiments work in a fixed-aspect game-unit space (not pixels). `main.ts` handles letterboxing, landmark remapping/scaling, and head pose extraction — experiments just receive `FaceData` in game units.
 
 **Experiment interface** (`src/types.ts`):
 ```ts
 interface Experiment {
   name: string;
   setup(ctx, w, h): void;
-  update(landmarks: Landmarks | null, dt: number): void;
+  update(face: FaceData | null, dt: number): void;
   draw(ctx, w, h): void;
 }
 ```
@@ -40,6 +40,11 @@ interface Experiment {
 - **Posture tracking**: Detect and provide feedback on body posture (head tilt, forward lean, etc.)
 - **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
 - **Stretching/tai chi**: Movement guidance or pose matching for stretching exercises
+
+## Design Direction
+
+- Playful, sketchy — intentionally unpolished, hand-drawn feel
+- Warm colors (coral, violet, teal), Fredoka + Sora fonts
 
 ## Constraints
 
