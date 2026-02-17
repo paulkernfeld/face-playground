@@ -3,6 +3,7 @@ import { GameRoughCanvas } from '../rough-scale';
 
 // Pose landmark indices
 const NOSE = 0;
+const L_EYE = 2, R_EYE = 5;
 const L_SHOULDER = 11, R_SHOULDER = 12;
 const L_ELBOW = 13, R_ELBOW = 14;
 const L_WRIST = 15, R_WRIST = 16;
@@ -30,6 +31,17 @@ let hasPose = false;
 // Googly eye state — pupils lag behind via spring physics
 let lPupilX = 0, lPupilY = 0, lPupilVx = 0, lPupilVy = 0;
 let rPupilX = 0, rPupilY = 0, rPupilVx = 0, rPupilVy = 0;
+
+// T-pose sparkle state
+interface Spark {
+  x: number; y: number;
+  vx: number; vy: number;
+  life: number; maxLife: number;
+  color: string; size: number;
+}
+let sparks: Spark[] = [];
+let isTpose = false;
+const SPARK_COLORS = ['#FFD93D', '#FF6B6B', '#2EC4B6', '#9B59B6', '#fff'];
 
 function mirror(landmarks: Landmarks): { x: number; y: number }[] {
   return landmarks.map(l => ({ x: w - l.x, y: l.y }));
@@ -69,6 +81,7 @@ export const bodyCreature: Experiment = {
     rc = new GameRoughCanvas(ctx.canvas);
     pts = [];
     hasPose = false;
+    sparks = [];
   },
 
   // face data not used — this experiment relies on pose
@@ -83,17 +96,17 @@ export const bodyCreature: Experiment = {
     const mirrored = mirror(pose);
     smoothPts(mirrored);
 
-    // Update googly eye pupils (spring toward wrist center)
+    // Update googly eye pupils (spring toward eye center)
     const eyeR = 0.35; // eye radius — pupil should stay inside
     const maxOff = eyeR * 0.5;
 
     [lPupilX, lPupilY, lPupilVx, lPupilVy] = updatePupil(
       lPupilX, lPupilY, lPupilVx, lPupilVy,
-      pts[L_WRIST].x, pts[L_WRIST].y, dt
+      pts[L_EYE].x, pts[L_EYE].y, dt
     );
     [rPupilX, rPupilY, rPupilVx, rPupilVy] = updatePupil(
       rPupilX, rPupilY, rPupilVx, rPupilVy,
-      pts[R_WRIST].x, pts[R_WRIST].y, dt
+      pts[R_EYE].x, pts[R_EYE].y, dt
     );
 
     // Clamp pupils inside eye radius
@@ -105,25 +118,74 @@ export const bodyCreature: Experiment = {
       }
       return [px, py];
     }
-    [lPupilX, lPupilY] = clampPupil(lPupilX, lPupilY, pts[L_WRIST].x, pts[L_WRIST].y);
-    [rPupilX, rPupilY] = clampPupil(rPupilX, rPupilY, pts[R_WRIST].x, pts[R_WRIST].y);
+    [lPupilX, lPupilY] = clampPupil(lPupilX, lPupilY, pts[L_EYE].x, pts[L_EYE].y);
+    [rPupilX, rPupilY] = clampPupil(rPupilX, rPupilY, pts[R_EYE].x, pts[R_EYE].y);
+
+    // T-pose detection: both wrists near shoulder height, arms spread wide
+    const shoulderY = (pts[L_SHOULDER].y + pts[R_SHOULDER].y) / 2;
+    const lWristNearShoulder = Math.abs(pts[L_WRIST].y - shoulderY) < 1.0;
+    const rWristNearShoulder = Math.abs(pts[R_WRIST].y - shoulderY) < 1.0;
+    const armSpread = Math.abs(pts[L_WRIST].x - pts[R_WRIST].x);
+    const shoulderWidth = Math.abs(pts[L_SHOULDER].x - pts[R_SHOULDER].x);
+    isTpose = lWristNearShoulder && rWristNearShoulder && armSpread > shoulderWidth * 1.8;
+
+    // Spawn sparks when in T-pose
+    if (isTpose) {
+      for (let i = 0; i < 3; i++) {
+        const side = Math.random() < 0.5 ? L_WRIST : R_WRIST;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 4;
+        sparks.push({
+          x: pts[side].x, y: pts[side].y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 2,
+          life: 1, maxLife: 0.5 + Math.random() * 0.8,
+          color: SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
+          size: 0.08 + Math.random() * 0.15,
+        });
+      }
+    }
+
+    // Update sparks
+    for (const s of sparks) {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy += 3 * dt; // gravity
+      s.life -= dt / s.maxLife;
+    }
+    sparks = sparks.filter(s => s.life > 0);
   },
 
   demo() {
     hasPose = true;
-    // Silly asymmetric pose
+    // T-pose with sparkles
     const fakePose: { x: number; y: number }[] = new Array(33).fill({ x: 8, y: 4.5 });
     const set = (i: number, x: number, y: number) => { fakePose[i] = { x, y }; };
     set(NOSE, 8, 1.5);
+    set(L_EYE, 7.5, 1.3); set(R_EYE, 8.5, 1.3);
     set(L_SHOULDER, 6.5, 3); set(R_SHOULDER, 9.5, 3);
-    set(L_ELBOW, 5, 4.2); set(R_ELBOW, 11.5, 2.5);
-    set(L_WRIST, 4, 3); set(R_WRIST, 13, 1.8);
+    set(L_ELBOW, 4.5, 3); set(R_ELBOW, 11.5, 3);
+    set(L_WRIST, 2.5, 3); set(R_WRIST, 13.5, 3);
     set(L_HIP, 7, 5.5); set(R_HIP, 9, 5.5);
     set(L_KNEE, 6.5, 7); set(R_KNEE, 9.5, 7);
     set(L_ANKLE, 6, 8.5); set(R_ANKLE, 10, 8.5);
     pts = fakePose;
-    lPupilX = 4; lPupilY = 3;
-    rPupilX = 13; rPupilY = 1.8;
+    lPupilX = 7.5; lPupilY = 1.3;
+    rPupilX = 8.5; rPupilY = 1.3;
+    // Scatter some sparkles around the hands
+    sparks = [];
+    for (let i = 0; i < 30; i++) {
+      const side = Math.random() < 0.5 ? 2.5 : 13.5;
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 1.5;
+      sparks.push({
+        x: side + Math.cos(angle) * dist, y: 3 + Math.sin(angle) * dist,
+        vx: 0, vy: 0,
+        life: 0.3 + Math.random() * 0.7, maxLife: 1,
+        color: SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
+        size: 0.08 + Math.random() * 0.15,
+      });
+    }
   },
 
   draw(ctx) {
@@ -167,9 +229,9 @@ export const bodyCreature: Experiment = {
       });
     });
 
-    // -- Googly eyes on hands --
-    drawGooglyEye(p[L_WRIST].x, p[L_WRIST].y, lPupilX, lPupilY, 60);
-    drawGooglyEye(p[R_WRIST].x, p[R_WRIST].y, rPupilX, rPupilY, 70);
+    // -- Googly eyes on head --
+    drawGooglyEye(p[L_EYE].x, p[L_EYE].y, lPupilX, lPupilY, 60);
+    drawGooglyEye(p[R_EYE].x, p[R_EYE].y, rPupilX, rPupilY, 70);
 
     // -- Party hat on head --
     const nose = p[NOSE];
@@ -189,6 +251,27 @@ export const bodyCreature: Experiment = {
       fill: '#FF6B6B', fillStyle: 'solid',
       stroke: 'none', roughness: 1, seed: 81,
     });
+
+    // -- Sparkles (T-pose) --
+    for (const s of sparks) {
+      const alpha = Math.max(0, s.life);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = alpha;
+      // Draw a 4-pointed star
+      const sz = s.size;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y - sz);
+      ctx.lineTo(s.x + sz * 0.3, s.y - sz * 0.3);
+      ctx.lineTo(s.x + sz, s.y);
+      ctx.lineTo(s.x + sz * 0.3, s.y + sz * 0.3);
+      ctx.lineTo(s.x, s.y + sz);
+      ctx.lineTo(s.x - sz * 0.3, s.y + sz * 0.3);
+      ctx.lineTo(s.x - sz, s.y);
+      ctx.lineTo(s.x - sz * 0.3, s.y - sz * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     function drawLimb(a: number, b: number, c: number, color: string, seed: number) {
       rc.line(p[a].x, p[a].y, p[b].x, p[b].y, {
