@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
 - `?demo=N` URL param — render experiment N with fake data, no camera needed (for screenshots/visual verification)
+- `?capture&prompt=<name>` — capture raw video frame to `fixtures/<name>.png` (toggle video with `v`, press Space to save)
+- `?angleTest` — minimal FaceMesh page that writes pitch/yaw to `#angles` DOM element (used by Playwright tests)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
 - Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 
@@ -48,8 +50,10 @@ interface Experiment {
 
 ## TODO
 
+### High Priority
+- **Switch to pixel-scale coordinates**: Replace 16x9 game-unit system with pixel-scale coords (~100s-1000s). Fixes two problems at once: (1) `ctx.fillText` silently fails at sub-pixel font sizes in real browsers, (2) rough.js hardcoded offsets explode at small scales, eliminating need for `GameRoughCanvas` wrapper. All experiments + main.ts need updating. Landmarks would be delivered in pixel coords instead of game units.
+
 ### Bugs
-- **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math.
 - **Server requires trailing slash**: Make dev server and deployed site work without trailing slash in URL
 
 ### Chomp experiment
@@ -57,18 +61,24 @@ interface Experiment {
 - End game: keep score on screen until user interacts, then start new game
 - Game start: wait for user interaction before beginning (don't auto-start)
 - Add hint text about closing mouth to move when pacman is far from nose
+- Idea: fruit bounces off you when mouth is closed (maybe too evil but interesting)
 
 ### UI/Controls
 - Rename "video" button to "debug" or "developer" — make it a clear toggle
 - Bundle FPS display into debug mode (hide from normal view)
 - Move pitch/yaw readout into debug mode too (not useful for normal play)
 - Unified color scheme across all experiments
+- Do we still need the screenshot button? Evaluate if it's used enough to justify UI space
+- Highlight chomp game in the menu UI (it's the most polished — make it stand out)
+
+### Offline / PWA
+- Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
 
 ### Performance
 - Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
 
 ### Sketchy/rough.js
-- **Text not rendering?** — check if `GameRoughCanvas` scale wrapper is interfering with native `ctx.fillText` calls in experiments
+- **Text not rendering** — `ctx.fillText` at sub-pixel font sizes (e.g. 0.3px in game units) silently fails in real browsers. Fix: use `pxText()` helper (see `fixture.ts`) to convert to pixel coords before drawing text. This likely affects all experiments using fillText in game-unit space.
 - **Consider changing coordinate system** to pixel-scale so rough.js works natively without the `GameRoughCanvas` wrapper (currently 16x9 game units; rough.js assumes pixel-scale coords ~100s-1000s)
 
 ### Testing & Sharing
@@ -89,6 +99,8 @@ interface Experiment {
 
 - Playwright tests use `channel: "chrome"` (system Chrome) — downloaded Chromium requires macOS 12+
 - Headless Chrome has a fake camera, so `getUserMedia` succeeds — mock failures with `page.addInitScript`
+- Fake camera from static image: use `setupFakeCamera(page, url)` from `tests/fake-camera.ts` — overrides `getUserMedia` with `canvas.captureStream()`. Video element must be `muted` for autoplay without user interaction.
+- Head pose fixtures live in `fixtures/` — raw 640x480 video frames, NOT canvas overlays. Served by Vite at `/fixtures/<name>.png`.
 - Git worktrees go in `.worktrees/` (already in `.gitignore`)
 - When feasible, take a Playwright screenshot of completed visual features and open in Preview for user verification
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
