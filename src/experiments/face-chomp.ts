@@ -1,4 +1,6 @@
 import type { Experiment, FaceData } from "../types";
+import rough from 'roughjs';
+import type { RoughCanvas } from 'roughjs/bin/canvas';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -44,6 +46,7 @@ interface Thing {
   y: number;
   vx: number;
   vy: number;
+  seed: number;
   homing?: boolean;
   guardian?: boolean;
   orbitAngle?: number;
@@ -65,6 +68,8 @@ let fruitsEaten = 0;
 let nearFruitButClosed = false;
 let w = 16;
 let h = 9;
+let rc: RoughCanvas;
+let seedCounter = 1000;
 
 function randPos(): { x: number; y: number } {
   return { x: MIN_X + Math.random() * (MAX_X - MIN_X), y: MIN_Y + Math.random() * (MAX_Y - MIN_Y) };
@@ -76,7 +81,7 @@ function randDir(speed: number): { vx: number; vy: number } {
 }
 
 function spawnFruit(): Thing {
-  return { ...randPos(), vx: 0, vy: 0 };
+  return { ...randPos(), vx: 0, vy: 0, seed: seedCounter++ };
 }
 
 function spawnSkull(homing = false): Thing {
@@ -84,7 +89,7 @@ function spawnSkull(homing = false): Thing {
   do {
     pos = randPos();
   } while (dist(pos.x, pos.y, px, py) < (PLAYER_R + SKULL_R) * 4);
-  return { ...pos, ...randDir(homing ? HUNTER_SPEED : SKULL_SPEED), homing };
+  return { ...pos, ...randDir(homing ? HUNTER_SPEED : SKULL_SPEED), seed: seedCounter++, homing };
 }
 
 function spawnGuardian(): Thing {
@@ -92,7 +97,7 @@ function spawnGuardian(): Thing {
   do {
     pos = randPos();
   } while (dist(pos.x, pos.y, px, py) < (PLAYER_R + SKULL_R) * 4);
-  return { ...pos, vx: 0, vy: 0, guardian: true, orbitAngle: Math.random() * Math.PI * 2 };
+  return { ...pos, vx: 0, vy: 0, seed: seedCounter++, guardian: true, orbitAngle: Math.random() * Math.PI * 2 };
 }
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
@@ -125,9 +130,10 @@ function reset() {
 export const faceChomp: Experiment = {
   name: "face chomp",
 
-  setup(_ctx, ww, hh) {
+  setup(ctx, ww, hh) {
     w = ww;
     h = hh;
+    rc = rough.canvas(ctx.canvas);
     reset();
   },
 
@@ -332,30 +338,27 @@ export const faceChomp: Experiment = {
 
     // Fruits
     for (const f of fruits) {
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, FRUIT_R, 0, Math.PI * 2);
-      ctx.fillStyle = "#0f0";
-      ctx.fill();
+      rc.circle(f.x, f.y, FRUIT_R * 2, {
+        fill: '#0f0', fillStyle: 'solid', stroke: 'none',
+        roughness: 1.2, seed: f.seed,
+      });
       // Stem
-      ctx.beginPath();
-      ctx.moveTo(f.x, f.y - FRUIT_R);
-      ctx.lineTo(f.x + 0.05, f.y - FRUIT_R - 0.1);
-      ctx.strokeStyle = "#090";
-      ctx.lineWidth = 0.03;
-      ctx.stroke();
+      rc.line(f.x, f.y - FRUIT_R, f.x + 0.05, f.y - FRUIT_R - 0.1, {
+        stroke: '#090', strokeWidth: 0.03, roughness: 1.5, seed: f.seed + 500,
+      });
     }
 
     // Power pellet
     if (pellet) {
       const pulse = 0.8 + Math.sin(performance.now() / 150) * 0.2;
-      ctx.beginPath();
-      ctx.arc(pellet.x, pellet.y, PELLET_R * pulse, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(pellet.x, pellet.y, PELLET_R * pulse * 0.6, 0, Math.PI * 2);
-      ctx.fillStyle = "#ff0";
-      ctx.fill();
+      rc.circle(pellet.x, pellet.y, PELLET_R * pulse * 2, {
+        fill: '#fff', fillStyle: 'solid', stroke: 'none',
+        roughness: 1, seed: pellet.seed,
+      });
+      rc.circle(pellet.x, pellet.y, PELLET_R * pulse * 1.2, {
+        fill: '#ff0', fillStyle: 'solid', stroke: 'none',
+        roughness: 0.8, seed: pellet.seed + 1,
+      });
     }
 
     // Skulls
@@ -365,45 +368,43 @@ export const faceChomp: Experiment = {
 
       // Guardian orbit ring indicator
       if (s.guardian && !powered) {
-        ctx.beginPath();
-        ctx.arc(sx, sy, GUARDIAN_ORBIT_R * 0.5, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(0, 200, 100, 0.2)";
-        ctx.lineWidth = 0.02;
-        ctx.stroke();
+        rc.circle(sx, sy, GUARDIAN_ORBIT_R, {
+          stroke: 'rgba(0, 200, 100, 0.2)', strokeWidth: 0.02,
+          fill: 'none', roughness: 1.5, seed: s.seed + 10,
+        });
       }
 
-      ctx.beginPath();
-      ctx.arc(sx, sy, SKULL_R, 0, Math.PI * 2);
+      let fillColor: string;
       if (powered) {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
-        ctx.fillStyle = flash ? "#fff" : "#22f";
+        fillColor = flash ? '#fff' : '#22f';
       } else if (s.guardian) {
-        ctx.fillStyle = "#0c6";
+        fillColor = '#0c6';
       } else {
-        ctx.fillStyle = s.homing ? "#a0f" : "#f44";
+        fillColor = s.homing ? '#a0f' : '#f44';
       }
-      ctx.fill();
+      rc.circle(sx, sy, SKULL_R * 2, {
+        fill: fillColor, fillStyle: 'solid', stroke: 'none',
+        roughness: 1.2, seed: s.seed,
+      });
       // Eyes
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.arc(sx - 0.06, sy - 0.04, 0.04, 0, Math.PI * 2);
-      ctx.arc(sx + 0.06, sy - 0.04, 0.04, 0, Math.PI * 2);
-      ctx.fill();
+      rc.circle(sx - 0.06, sy - 0.04, 0.08, {
+        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        roughness: 0.5, seed: s.seed + 1,
+      });
+      rc.circle(sx + 0.06, sy - 0.04, 0.08, {
+        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        roughness: 0.5, seed: s.seed + 2,
+      });
       // Mouth
-      ctx.beginPath();
       if (powered) {
-        ctx.moveTo(sx - 0.08, sy + 0.06);
-        ctx.lineTo(sx - 0.04, sy + 0.09);
-        ctx.lineTo(sx, sy + 0.06);
-        ctx.lineTo(sx + 0.04, sy + 0.09);
-        ctx.lineTo(sx + 0.08, sy + 0.06);
+        rc.line(sx - 0.08, sy + 0.06, sx - 0.04, sy + 0.09, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
+        rc.line(sx - 0.04, sy + 0.09, sx, sy + 0.06, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 4 });
+        rc.line(sx, sy + 0.06, sx + 0.04, sy + 0.09, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 5 });
+        rc.line(sx + 0.04, sy + 0.09, sx + 0.08, sy + 0.06, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 6 });
       } else {
-        ctx.moveTo(sx - 0.08, sy + 0.08);
-        ctx.lineTo(sx + 0.08, sy + 0.08);
+        rc.line(sx - 0.08, sy + 0.08, sx + 0.08, sy + 0.08, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
       }
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 0.03;
-      ctx.stroke();
     }
 
     // Player
@@ -411,34 +412,34 @@ export const faceChomp: Experiment = {
     const cy = py;
     if (alive) {
       const canMove = mouthOpen < 0.3;
-      // Always slightly open (0.15 rad min), wider when eating (0.8 rad)
       const mouthAngle = canMove ? 0.15 : 0.8;
-      ctx.beginPath();
-      ctx.arc(cx, cy, PLAYER_R, mouthAngle, Math.PI * 2 - mouthAngle);
-      ctx.lineTo(cx, cy);
-      ctx.closePath();
+      let playerColor: string;
       if (!tracking) {
-        ctx.fillStyle = "#666";
+        playerColor = '#666';
       } else if (powered) {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
-        ctx.fillStyle = flash ? "#ff0" : "#4cf";
+        playerColor = flash ? '#ff0' : '#4cf';
       } else {
-        ctx.fillStyle = canMove ? "#ff0" : "#aa0";
+        playerColor = canMove ? '#ff0' : '#aa0';
       }
-      ctx.fill();
+      // Pac-man arc
+      rc.arc(cx, cy, PLAYER_R * 2, PLAYER_R * 2, mouthAngle, Math.PI * 2 - mouthAngle, true, {
+        fill: playerColor, fillStyle: 'solid', stroke: 'none',
+        roughness: 1, seed: 1,
+      });
       // Eye
-      ctx.beginPath();
-      ctx.arc(cx - 0.02, cy - 0.1, 0.04, 0, Math.PI * 2);
-      ctx.fillStyle = "#000";
-      ctx.fill();
+      rc.circle(cx - 0.02, cy - 0.1, 0.08, {
+        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        roughness: 0.5, seed: 2,
+      });
     } else {
-      ctx.beginPath();
-      ctx.arc(cx, cy, PLAYER_R, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
-      ctx.fill();
+      rc.circle(cx, cy, PLAYER_R * 2, {
+        fill: 'rgba(255, 255, 0, 0.3)', fillStyle: 'solid', stroke: 'none',
+        roughness: 1.5, seed: 3,
+      });
     }
 
-    // "Open your mouth!" hint
+    // "Open your mouth!" hint — keep native text
     if (nearFruitButClosed && alive) {
       const msg = "open your mouth!";
       ctx.font = "bold 0.3px monospace";
@@ -458,13 +459,13 @@ export const faceChomp: Experiment = {
       ctx.fillText(msg, hx, hy + 0.1);
     }
 
-    // Score
+    // Score — native text
     ctx.fillStyle = "#fff";
     ctx.font = "bold 0.35px monospace";
     ctx.textAlign = "right";
     ctx.fillText(`${score}`, w - 0.25, 0.5);
 
-    // Death message
+    // Death message — native text
     if (!alive) {
       ctx.fillStyle = "#f44";
       ctx.font = "bold 0.6px monospace";

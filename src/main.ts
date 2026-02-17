@@ -4,6 +4,7 @@ import {
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
 import rough from 'roughjs';
+import type { RoughCanvas } from 'roughjs/bin/canvas';
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
@@ -33,6 +34,7 @@ let latestFace: FaceData | null = null;
 let rawLandmarks: Landmarks | null = null;
 let landmarker: FaceLandmarker | null = null;
 let showVideo = false;
+let rc: RoughCanvas;
 
 // -- Game-unit coordinate system (16x9) --
 const GAME_W = 16;
@@ -138,6 +140,7 @@ function showMenu() {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'card-sketch');
     svg.setAttribute('viewBox', '0 0 100 130');
+    svg.setAttribute('preserveAspectRatio', 'none');
     const rc = rough.svg(svg);
     // Border
     svg.appendChild(rc.rectangle(3, 3, 94, 124, {
@@ -217,6 +220,7 @@ function resize() {
   scale = Math.min(canvas.width / GAME_W, canvas.height / GAME_H);
   gameX = (canvas.width - GAME_W * scale) / 2;
   gameY = (canvas.height - GAME_H * scale) / 2;
+  rc = rough.canvas(canvas);
   if (currentExp) {
     currentExp.setup(ctx, GAME_W, GAME_H);
   }
@@ -359,10 +363,14 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   const pw = metrics.width + 0.35;
   const ph = 0.45;
 
-  ctx.fillStyle = "rgba(15, 15, 35, 0.7)";
-  ctx.beginPath();
-  ctx.roundRect(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, 0.12);
-  ctx.fill();
+  // Sketchy background pill
+  if (rc) {
+    rc.rectangle(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, {
+      fill: 'rgba(15, 15, 35, 0.7)', fillStyle: 'solid',
+      stroke: '#FFD93D', strokeWidth: 0.02,
+      roughness: 1.2, seed: 900,
+    });
+  }
 
   ctx.fillStyle = "#FFD93D";
   ctx.fillText(msg, tx, ty + 0.08);

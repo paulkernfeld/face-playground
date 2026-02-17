@@ -1,4 +1,6 @@
 import type { Experiment, FaceData } from "../types";
+import rough from 'roughjs';
+import type { RoughCanvas } from 'roughjs/bin/canvas';
 
 // Nose tip is landmark index 1
 const NOSE_TIP = 1;
@@ -15,16 +17,18 @@ let w = 16;
 let h = 9;
 let pitch = 0;
 let yaw = 0;
+let rc: RoughCanvas;
 
 export const headCursor: Experiment = {
   name: "head cursor",
 
-  setup(_ctx, ww, hh) {
+  setup(ctx, ww, hh) {
     w = ww;
     h = hh;
     cursorX = w / 2;
     cursorY = h / 2;
     trail = [];
+    rc = rough.canvas(ctx.canvas);
   },
 
   update(face: FaceData | null, _dt: number) {
@@ -48,39 +52,34 @@ export const headCursor: Experiment = {
     // Draw trail
     for (let i = 0; i < trail.length; i++) {
       const t = i / trail.length;
-      ctx.beginPath();
-      ctx.arc(trail[i].x, trail[i].y, 0.05 + t * 0.15, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0, 255, 100, ${t * 0.5})`;
-      ctx.fill();
+      rc.circle(trail[i].x, trail[i].y, (0.05 + t * 0.15) * 2, {
+        fill: `rgba(0, 255, 100, ${t * 0.5})`,
+        fillStyle: 'solid',
+        stroke: 'none',
+        roughness: 0.8,
+        seed: i + 1,
+      });
     }
 
     // Draw cursor
     const cx = cursorX;
     const cy = cursorY;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 0.22, 0, Math.PI * 2);
     const color = tracking ? "#0f0" : "#666";
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 0.04;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 0.05, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+
+    // Outer ring
+    rc.circle(cx, cy, 0.44, {
+      stroke: color, strokeWidth: 0.04, fill: 'none', roughness: 1.2, seed: 100,
+    });
+    // Center dot
+    rc.circle(cx, cy, 0.1, {
+      fill: color, fillStyle: 'solid', stroke: 'none', roughness: 0.5, seed: 101,
+    });
 
     // Crosshair lines
-    ctx.beginPath();
-    ctx.moveTo(cx - 0.35, cy);
-    ctx.lineTo(cx - 0.12, cy);
-    ctx.moveTo(cx + 0.12, cy);
-    ctx.lineTo(cx + 0.35, cy);
-    ctx.moveTo(cx, cy - 0.35);
-    ctx.lineTo(cx, cy - 0.12);
-    ctx.moveTo(cx, cy + 0.12);
-    ctx.lineTo(cx, cy + 0.35);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 0.03;
-    ctx.stroke();
+    rc.line(cx - 0.35, cy, cx - 0.12, cy, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 102 });
+    rc.line(cx + 0.12, cy, cx + 0.35, cy, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 103 });
+    rc.line(cx, cy - 0.35, cx, cy - 0.12, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 104 });
+    rc.line(cx, cy + 0.12, cx, cy + 0.35, { stroke: color, strokeWidth: 0.03, roughness: 1, seed: 105 });
 
     // Head angle debug
     if (tracking) {
@@ -88,7 +87,7 @@ export const headCursor: Experiment = {
       ctx.font = "0.25px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = "#888";
-      ctx.fillText(`pitch ${deg(pitch)}°  yaw ${deg(yaw)}°`, 0.3, h - 0.3);
+      ctx.fillText(`pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, 0.3, h - 0.3);
     }
   },
 };
