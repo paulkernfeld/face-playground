@@ -87,3 +87,5 @@ interface Experiment {
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
 - Node 21.7.2 (engine warnings are expected and harmless)
 - Camera resolution intentionally 640x480 — FaceMesh downscales internally, lower res improves FPS
+- **No multi-line bash scripts** — keep each Bash tool call to a single simple command. Don't chain with `&&`, don't use `sleep`, don't combine background processes with waits. If commands need to run sequentially, use separate Bash calls.
+- **No `git -C`** — use `cd` to switch directories instead. `git -C` triggers extra approval prompts.
