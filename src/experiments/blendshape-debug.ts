@@ -98,42 +98,42 @@ export const blendshapeDebug: Experiment = {
     ctx.textAlign = "center";
     if (tense) {
       const instruction = RELAXATION_INSTRUCTIONS[active[0].name] ?? "relax";
-      ctx.font = "bold 36px monospace";
+      ctx.font = "bold 0.45px monospace";
       ctx.fillStyle = "#f44";
       ctx.fillText(instruction, w / 2, h / 2);
     } else {
-      ctx.font = "bold 48px monospace";
+      ctx.font = "bold 0.6px monospace";
       ctx.fillStyle = "#0f0";
       ctx.fillText("RELAXED", w / 2, h / 2);
     }
 
     // Active tension blendshapes
     if (active.length > 0) {
-      ctx.font = "18px monospace";
+      ctx.font = "0.22px monospace";
       ctx.textAlign = "left";
-      const LEFT = 40;
+      const LEFT = 0.5;
       const BAR_MAX = w * 0.4;
 
       for (let i = 0; i < active.length; i++) {
-        const y = 100 + i * 28;
+        const y = 1.2 + i * 0.35;
         const { name, val } = active[i];
 
         // Label
         ctx.fillStyle = "#fff";
-        ctx.fillText(name, LEFT, y + 18);
+        ctx.fillText(name, LEFT, y + 0.22);
 
         // Bar
-        const barX = LEFT + 240;
+        const barX = LEFT + 3.0;
         ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(barX, y + 2, BAR_MAX, 20);
+        ctx.fillRect(barX, y + 0.02, BAR_MAX, 0.25);
         ctx.fillStyle = val > 0.5 ? "#f44" : "#f44" + "99";
-        ctx.fillRect(barX, y + 2, val * BAR_MAX, 20);
+        ctx.fillRect(barX, y + 0.02, val * BAR_MAX, 0.25);
 
         // Value
         ctx.fillStyle = "#fff";
-        ctx.font = "14px monospace";
-        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 8, y + 18);
-        ctx.font = "18px monospace";
+        ctx.font = "0.17px monospace";
+        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22);
+        ctx.font = "0.22px monospace";
       }
     }
 
@@ -146,34 +146,34 @@ export const blendshapeDebug: Experiment = {
     maybeActive.sort((a, b) => b.val - a.val);
 
     if (maybeActive.length > 0) {
-      const startY = 100 + active.length * 28 + 30;
+      const startY = 1.2 + active.length * 0.35 + 0.4;
       ctx.fillStyle = "#fa0";
-      ctx.font = "bold 14px monospace";
+      ctx.font = "bold 0.17px monospace";
       ctx.textAlign = "left";
-      ctx.fillText("── MAYBE INTERESTING ──", 40, startY);
+      ctx.fillText("── MAYBE INTERESTING ──", 0.5, startY);
 
-      ctx.font = "16px monospace";
-      const LEFT = 40;
+      ctx.font = "0.2px monospace";
+      const LEFT = 0.5;
       const BAR_MAX = w * 0.4;
 
       for (let i = 0; i < maybeActive.length; i++) {
-        const y = startY + 10 + i * 24;
+        const y = startY + 0.12 + i * 0.3;
         const { name, val } = maybeActive[i];
 
         ctx.fillStyle = "#ccc";
         ctx.textAlign = "left";
-        ctx.fillText(name, LEFT, y + 16);
+        ctx.fillText(name, LEFT, y + 0.2);
 
-        const barX = LEFT + 240;
+        const barX = LEFT + 3.0;
         ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(barX, y + 2, BAR_MAX, 18);
+        ctx.fillRect(barX, y + 0.02, BAR_MAX, 0.22);
         ctx.fillStyle = "#fa0" + "88";
-        ctx.fillRect(barX, y + 2, val * BAR_MAX, 18);
+        ctx.fillRect(barX, y + 0.02, val * BAR_MAX, 0.22);
 
         ctx.fillStyle = "#ccc";
-        ctx.font = "12px monospace";
-        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 8, y + 16);
-        ctx.font = "16px monospace";
+        ctx.font = "0.15px monospace";
+        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.2);
+        ctx.font = "0.2px monospace";
       }
     }
 
@@ -183,43 +183,43 @@ export const blendshapeDebug: Experiment = {
         .filter(([name]) => !TENSION_SET.has(name) && !MAYBE_SET.has(name))
         .sort((a, b) => b[1] - a[1]);
 
-      const maybeH = maybeActive.length > 0 ? maybeActive.length * 24 + 50 : 0;
-      const startY = Math.max(100 + active.length * 28 + maybeH + 40, h * 0.45);
+      const maybeH = maybeActive.length > 0 ? maybeActive.length * 0.3 + 0.6 : 0;
+      const startY = Math.max(1.2 + active.length * 0.35 + maybeH + 0.5, h * 0.45);
       ctx.fillStyle = "#fa0";
-      ctx.font = "bold 14px monospace";
+      ctx.font = "bold 0.17px monospace";
       ctx.textAlign = "left";
-      ctx.fillText("── OTHER BLENDSHAPES ──", 40, startY);
+      ctx.fillText("── OTHER BLENDSHAPES ──", 0.5, startY);
 
-      ctx.font = "12px monospace";
-      const ROW_H = 18;
+      ctx.font = "0.15px monospace";
+      const ROW_H = 0.22;
       const BAR_MAX = w * 0.3;
 
       for (let i = 0; i < all.length; i++) {
-        const y = startY + 10 + i * ROW_H;
-        if (y > h - 20) break;
+        const y = startY + 0.12 + i * ROW_H;
+        if (y > h - 0.25) break;
         const [name, val] = all[i];
 
         ctx.fillStyle = val > 0.01 ? "#ccc" : "#555";
         ctx.textAlign = "right";
-        ctx.fillText(name, 220, y + ROW_H * 0.7);
+        ctx.fillText(name, 2.75, y + ROW_H * 0.7);
 
         ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(228, y + 2, BAR_MAX, ROW_H - 4);
+        ctx.fillRect(2.85, y + 0.02, BAR_MAX, ROW_H - 0.05);
         if (val > 0.1) {
           ctx.fillStyle = "#fa0" + "66";
-          ctx.fillRect(228, y + 2, val * BAR_MAX, ROW_H - 4);
+          ctx.fillRect(2.85, y + 0.02, val * BAR_MAX, ROW_H - 0.05);
         }
       }
     }
 
     // Hint
     ctx.fillStyle = "#555";
-    ctx.font = "14px monospace";
+    ctx.font = "0.17px monospace";
     ctx.textAlign = "left";
     ctx.fillText(
       `[i] ${showAll ? "hide" : "show"} other blendshapes  |  ${latestBlendshapes.size} total`,
-      40,
-      h - 20
+      0.5,
+      h - 0.25
     );
   },
 };

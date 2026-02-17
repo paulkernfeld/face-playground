@@ -26,6 +26,20 @@ let rawLandmarks: Landmarks | null = null;
 let landmarker: FaceLandmarker | null = null;
 let showVideo = false;
 
+// -- Game-unit coordinate system (16x9) --
+const GAME_W = 16;
+const GAME_H = 9;
+let scale = 1;
+let gameX = 0;
+let gameY = 0;
+
+// Head pose state
+let headPitch = 0;
+let headYaw = 0;
+let lastFaceSeenAt = 0;
+let lastNoseX = GAME_W / 2;
+let lastNoseY = GAME_H / 2;
+
 // Remap landmarks from a narrower range to 0..1 so you don't have to
 // push your face to the very edge of the camera to reach screen edges.
 const MARGIN = 0.05;
@@ -35,6 +49,34 @@ function remap(v: number): number {
 function remapLandmarks(raw: Landmarks): Landmarks {
   return raw.map((l) => ({ x: remap(l.x), y: remap(l.y), z: l.z }));
 }
+
+// -- Touch button bar --
+const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+const key = (k: string) => isTouchDevice ? "" : ` (${k})`;
+const btnBar = document.createElement("div");
+btnBar.id = "touch-bar";
+btnBar.classList.add("hidden");
+btnBar.innerHTML = `
+  <button id="btn-back">&#x2190; back${key("q")}</button>
+  <button id="btn-video">video${key("v")}</button>
+  <button id="btn-screenshot">screenshot${key("s")}</button>
+`;
+document.body.appendChild(btnBar);
+
+document.getElementById("btn-back")!.addEventListener("click", () => {
+  if (currentExp) showMenu();
+});
+document.getElementById("btn-video")!.addEventListener("click", () => {
+  if (currentExp) showVideo = !showVideo;
+});
+document.getElementById("btn-screenshot")!.addEventListener("click", () => {
+  if (currentExp) {
+    const link = document.createElement("a");
+    link.download = `face-${currentExp.name}-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+});
 
 // -- Build menu --
 function showMenu() {
@@ -49,14 +91,23 @@ function showMenu() {
 
   canvas.classList.add("hidden");
   hudEl.classList.add("hidden");
+  btnBar.classList.add("hidden");
   menuEl.classList.remove("hidden");
 
   let html = "<h1>face playground</h1>";
   experiments.forEach((exp, i) => {
-    html += `<div class="item"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
+    html += `<div class="item" data-exp="${i}"><span class="key">${i + 1}</span>  ${exp.name}</div>`;
   });
-  html += `<div class="hint">press a number to start // q=back  v=video  s=screenshot</div>`;
+  html += `<div class="hint">tap or press a number to start</div>`;
   menuEl.innerHTML = html;
+
+  // Touch support: make menu items tappable
+  menuEl.querySelectorAll(".item[data-exp]").forEach((el) => {
+    (el as HTMLElement).addEventListener("click", () => {
+      const idx = parseInt((el as HTMLElement).dataset.exp!);
+      enterExperiment(idx);
+    });
+  });
 }
 
 // -- Enter an experiment --
@@ -67,15 +118,20 @@ async function enterExperiment(index: number) {
   menuEl.classList.add("hidden");
   canvas.classList.remove("hidden");
   hudEl.classList.remove("hidden");
+  btnBar.classList.remove("hidden");
 
   // Show loading state
   resize();
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(gameX, gameY);
+  ctx.scale(scale, scale);
   ctx.fillStyle = "#0f0";
-  ctx.font = "20px monospace";
+  ctx.font = "0.3px monospace";
   ctx.textAlign = "center";
-  ctx.fillText("starting camera...", canvas.width / 2, canvas.height / 2);
+  ctx.fillText("starting camera...", GAME_W / 2, GAME_H / 2);
+  ctx.restore();
 
   // Init camera at lower res
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -97,12 +153,13 @@ async function enterExperiment(index: number) {
         delegate: "GPU",
       },
       outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true,
       runningMode: "VIDEO",
       numFaces: 1,
     });
   }
 
-  currentExp.setup(ctx, canvas.width, canvas.height);
+  currentExp.setup(ctx, GAME_W, GAME_H);
   await runLoop();
 }
 
@@ -110,8 +167,11 @@ async function enterExperiment(index: number) {
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  scale = Math.min(canvas.width / GAME_W, canvas.height / GAME_H);
+  gameX = (canvas.width - GAME_W * scale) / 2;
+  gameY = (canvas.height - GAME_H * scale) / 2;
   if (currentExp) {
-    currentExp.setup(ctx, canvas.width, canvas.height);
+    currentExp.setup(ctx, GAME_W, GAME_H);
   }
 }
 window.addEventListener("resize", resize);
@@ -144,6 +204,13 @@ async function runLoop() {
         rawLandmarks = result.faceLandmarks[0];
         const remapped = remapLandmarks(rawLandmarks);
 
+        // Scale to game units (16x9)
+        const gameUnits = remapped.map((l) => ({
+          x: l.x * GAME_W,
+          y: l.y * GAME_H,
+          z: l.z,
+        }));
+
         // Build blendshapes map
         const blendshapes: Blendshapes = new Map();
         if (result.faceBlendshapes.length > 0) {
@@ -152,46 +219,106 @@ async function runLoop() {
           }
         }
 
-        latestFace = { landmarks: remapped, blendshapes };
+        // Extract head pose from transformation matrix
+        if (result.facialTransformationMatrixes && result.facialTransformationMatrixes.length > 0) {
+          const m = result.facialTransformationMatrixes[0].data;
+          // 4x4 column-major matrix, extract rotation
+          // m[0],m[1],m[2] = col0, m[4],m[5],m[6] = col1, m[8],m[9],m[10] = col2
+          headPitch = Math.atan2(-m[8], Math.sqrt(m[9] * m[9] + m[10] * m[10]));
+          headYaw = Math.atan2(m[4], m[0]);
+        }
+
+        latestFace = { landmarks: gameUnits, blendshapes, headPitch, headYaw };
+        lastFaceSeenAt = now;
+        // Track nose position for warning overlay
+        lastNoseX = gameUnits[1].x;
+        lastNoseY = gameUnits[1].y;
       } else {
         rawLandmarks = null;
         latestFace = null;
       }
     }
 
-    // Clear + optionally draw video and mesh (zoomed to match remapped coords)
-    const cw = canvas.width;
-    const ch = canvas.height;
-    ctx.clearRect(0, 0, cw, ch);
+    // Clear full canvas (black letterbox)
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Enter game-unit transform
+    ctx.save();
+    ctx.translate(gameX, gameY);
+    ctx.scale(scale, scale);
+
+    // Clip to game area
+    ctx.beginPath();
+    ctx.rect(0, 0, GAME_W, GAME_H);
+    ctx.clip();
+
+    // Optionally draw video and mesh in game-unit space
     if (showVideo) {
       const s = 1 / (1 - 2 * MARGIN);
-      const ox = MARGIN * s * cw;
-      const oy = MARGIN * s * ch;
+      const ox = MARGIN * s * GAME_W;
+      const oy = MARGIN * s * GAME_H;
       ctx.save();
-      ctx.translate(cw, 0);
+      ctx.translate(GAME_W, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(video, -ox, -oy, s * cw, s * ch);
+      ctx.drawImage(video, -ox, -oy, s * GAME_W, s * GAME_H);
       ctx.restore();
 
-      // Draw face mesh overlay (remapped to match game coordinates)
+      // Draw face mesh overlay
       if (rawLandmarks) {
         ctx.strokeStyle = "rgba(0, 255, 100, 0.2)";
-        ctx.lineWidth = 0.5;
+        ctx.lineWidth = 0.01;
         for (const conn of FaceLandmarker.FACE_LANDMARKS_TESSELATION) {
           const a = rawLandmarks[conn.start];
           const b = rawLandmarks[conn.end];
           ctx.beginPath();
-          ctx.moveTo((1 - remap(a.x)) * cw, remap(a.y) * ch);
-          ctx.lineTo((1 - remap(b.x)) * cw, remap(b.y) * ch);
+          ctx.moveTo((1 - remap(a.x)) * GAME_W, remap(a.y) * GAME_H);
+          ctx.lineTo((1 - remap(b.x)) * GAME_W, remap(b.y) * GAME_H);
           ctx.stroke();
         }
       }
     }
 
-    // Update + draw with fresh face data
+    // Update + draw experiment in game-unit space
     currentExp.update(latestFace, dt);
-    currentExp.draw(ctx, canvas.width, canvas.height);
+    currentExp.draw(ctx, GAME_W, GAME_H);
+
+    // Face angle warnings (all experiments)
+    drawAngleWarnings(ctx, now);
+
+    ctx.restore();
   }
+}
+
+// -- Face angle warnings --
+const ANGLE_THRESHOLD = 0.55; // ~31 degrees
+function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
+  let msg = "";
+  if (!latestFace && lastFaceSeenAt > 0 && now - lastFaceSeenAt < 3000) {
+    msg = "face lost";
+  } else if (latestFace) {
+    if (headPitch > ANGLE_THRESHOLD) msg = "angle your face down";
+    else if (headPitch < -ANGLE_THRESHOLD) msg = "angle your face up";
+    else if (Math.abs(headYaw) > ANGLE_THRESHOLD) msg = "face the camera";
+  }
+  if (!msg) return;
+
+  const tx = Math.max(1.5, Math.min(GAME_W - 1.5, lastNoseX));
+  const ty = Math.max(0.8, lastNoseY - 0.6);
+
+  ctx.font = "bold 0.3px monospace";
+  ctx.textAlign = "center";
+  const metrics = ctx.measureText(msg);
+  const pw = metrics.width + 0.3;
+  const ph = 0.45;
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.beginPath();
+  ctx.roundRect(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, 0.1);
+  ctx.fill();
+
+  ctx.fillStyle = "#fa0";
+  ctx.fillText(msg, tx, ty + 0.08);
 }
 
 // -- Keyboard handler --

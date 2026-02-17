@@ -11,6 +11,8 @@ export type Blendshapes = Map<string, number>;
 export interface FaceData {
   landmarks: Landmarks;
   blendshapes: Blendshapes;
+  headPitch: number; // radians, positive = looking down
+  headYaw: number; // radians, positive = turned right
 }
 
 export interface Experiment {
