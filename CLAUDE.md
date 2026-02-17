@@ -43,6 +43,8 @@ interface Experiment {
 
 ## Constraints
 
+- Git worktrees go in `.worktrees/` (already in `.gitignore`)
+- When feasible, take a Playwright screenshot of completed visual features and open in Preview for user verification
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
 - Node 21.7.2 (engine warnings are expected and harmless)
 - Camera resolution intentionally 640x480 — FaceMesh downscales internally, lower res improves FPS
