@@ -1,19 +1,28 @@
-import type { Experiment } from "./types";
+import type { Experiment, Landmarks } from "./types";
 import { pxText } from "./px-text";
+import { GameRoughCanvas } from "./rough-scale";
+import type { PersonState } from "./experiments/creature-shared";
+import { updatePeople, drawPerson } from "./experiments/creature-shared";
 
 // Capture tool for saving raw video frames as fixture images.
 // Activate via ?capture URL param. Press Space to save raw video frame to fixtures/.
 
 let w = 16, h = 9;
+let rc: GameRoughCanvas;
+let people: PersonState[] = [];
 let flashUntil = 0;
 let flashMsg = '';
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+let countdownEnd = 0; // timestamp when countdown fires (0 = inactive)
+const COUNTDOWN_SECS = 10;
 
 export const captureExperiment: Experiment = {
   name: "capture",
 
-  setup(_ctx, ww, hh) {
+  setup(ctx, ww, hh) {
     w = ww; h = hh;
+    rc = new GameRoughCanvas(ctx.canvas);
+    people = [];
 
     const win = window as any;
 
@@ -43,24 +52,47 @@ export const captureExperiment: Experiment = {
       flashMsg = `saved fixtures/${label}.png`;
     };
 
-    // Keyboard: Space = capture
+    // Keyboard: Space = start countdown (or cancel if running)
     if (keyHandler) document.removeEventListener('keydown', keyHandler);
     keyHandler = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        win.__capture();
+        if (countdownEnd > 0) {
+          countdownEnd = 0; // cancel
+        } else {
+          countdownEnd = performance.now() + COUNTDOWN_SECS * 1000;
+        }
       }
     };
     document.addEventListener('keydown', keyHandler);
   },
 
-  update() {},
+  update() {
+    // Fire capture when countdown reaches zero
+    if (countdownEnd > 0 && performance.now() >= countdownEnd) {
+      countdownEnd = 0;
+      (window as any).__capture?.();
+    }
+  },
 
-  draw(ctx) {
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, w, h);
+  updatePose(poses: Landmarks[], dt: number) {
+    updatePeople(poses, people, dt, w);
+  },
+
+  draw(ctx, _w: number, _h: number, debug?: boolean) {
+    // Only fill background when video feed is not showing
+    if (!debug) {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Draw body creature
+    for (let i = 0; i < people.length; i++) {
+      drawPerson(ctx, rc, people[i], i, i * 100);
+    }
 
     const prompt = (window as any).__capturePrompt || '';
+    const now = performance.now();
 
     // Title
     pxText(ctx, "CAPTURE", w / 2, 1.2, "bold 0.5px sans-serif", "#FFD93D", "center");
@@ -70,12 +102,19 @@ export const captureExperiment: Experiment = {
       pxText(ctx, `saving as: ${prompt}.png`, w / 2, 2.2, "0.3px sans-serif", "#888", "center");
     }
 
-    // Instructions
-    pxText(ctx, "Space = save raw video frame to fixtures/", w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
-    pxText(ctx, "v = toggle video feed", w / 2, h / 2 + 0.6, "0.25px sans-serif", "#666", "center");
+    // Countdown display
+    if (countdownEnd > 0) {
+      const remaining = Math.ceil((countdownEnd - now) / 1000);
+      pxText(ctx, `${remaining}`, w / 2, h / 2, "bold 2px sans-serif", "#FFD93D", "center");
+      pxText(ctx, "Space = cancel", w / 2, h / 2 + 1.5, "0.25px sans-serif", "#666", "center");
+    } else {
+      // Instructions
+      pxText(ctx, `Space = ${COUNTDOWN_SECS}s timer then capture`, w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
+      pxText(ctx, "v = toggle video feed", w / 2, h / 2 + 0.6, "0.25px sans-serif", "#666", "center");
+    }
 
     // Capture flash
-    if (performance.now() < flashUntil) {
+    if (now < flashUntil) {
       ctx.fillStyle = 'rgba(255,255,255,0.3)';
       ctx.fillRect(0, 0, w, h);
       pxText(ctx, flashMsg, w / 2, h - 1.5, "bold 0.4px sans-serif", "#0f0", "center");

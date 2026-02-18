@@ -110,14 +110,29 @@ export function updatePeople(poses: Landmarks[], people: PersonState[], dt: numb
   }
 }
 
+/** Optional per-limb color overrides (e.g. charcoal for misaligned limbs) */
+export interface LimbColors {
+  body?: string;
+  lArm?: string;
+  rArm?: string;
+  lLeg?: string;
+  rLeg?: string;
+}
+
 /** Draw a single person with all body parts */
 export function drawPerson(
   ctx: CanvasRenderingContext2D, rc: GameRoughCanvas,
-  person: PersonState, paletteIndex: number, seedBase: number
+  person: PersonState, paletteIndex: number, seedBase: number,
+  limbColors?: LimbColors
 ): void {
   const p = person.pts;
   if (p.length < 33) return;
   const pal = PALETTES[paletteIndex % PALETTES.length];
+  const bodyC = limbColors?.body ?? pal.body;
+  const lArmC = limbColors?.lArm ?? pal.lArm;
+  const rArmC = limbColors?.rArm ?? pal.rArm;
+  const lLegC = limbColors?.lLeg ?? pal.lLeg;
+  const rLegC = limbColors?.rLeg ?? pal.rLeg;
 
   // Body blob
   const bodyPath: [number, number][] = [
@@ -128,19 +143,19 @@ export function drawPerson(
     [p[L_SHOULDER].x, p[L_SHOULDER].y],
   ];
   rc.polygon(bodyPath, {
-    fill: pal.body, fillStyle: 'cross-hatch', fillWeight: 0.04,
-    stroke: pal.body, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 1,
+    fill: bodyC, fillStyle: 'cross-hatch', fillWeight: 0.04,
+    stroke: bodyC, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 1,
   });
 
   // Arms + legs
-  drawLimb(rc, p, L_SHOULDER, L_ELBOW, L_WRIST, pal.lArm, seedBase + 10);
-  drawLimb(rc, p, R_SHOULDER, R_ELBOW, R_WRIST, pal.rArm, seedBase + 20);
-  drawLimb(rc, p, L_HIP, L_KNEE, L_ANKLE, pal.lLeg, seedBase + 30);
-  drawLimb(rc, p, R_HIP, R_KNEE, R_ANKLE, pal.rLeg, seedBase + 40);
+  drawLimb(rc, p, L_SHOULDER, L_ELBOW, L_WRIST, lArmC, seedBase + 10);
+  drawLimb(rc, p, R_SHOULDER, R_ELBOW, R_WRIST, rArmC, seedBase + 20);
+  drawLimb(rc, p, L_HIP, L_KNEE, L_ANKLE, lLegC, seedBase + 30);
+  drawLimb(rc, p, R_HIP, R_KNEE, R_ANKLE, rLegC, seedBase + 40);
 
   // Joint circles
   const joints = [L_ELBOW, R_ELBOW, L_KNEE, R_KNEE];
-  const jColors = [pal.lArm, pal.rArm, pal.lLeg, pal.rLeg];
+  const jColors = [lArmC, rArmC, lLegC, rLegC];
   joints.forEach((j, ji) => {
     rc.circle(p[j].x, p[j].y, 0.4, {
       fill: jColors[ji], fillStyle: 'solid',
@@ -156,7 +171,7 @@ export function drawPerson(
     const wiggleY = Math.cos(phase * 0.9) * 0.05;
     const hx = p[wristIdx].x + wiggleX;
     const hy = p[wristIdx].y + wiggleY;
-    const color = wristIdx === L_WRIST ? pal.lArm : pal.rArm;
+    const color = wristIdx === L_WRIST ? lArmC : rArmC;
     rc.circle(hx, hy, pulse * 2, {
       fill: color, fillStyle: 'solid',
       stroke: charcoal, strokeWidth: 0.03, roughness: 1.3, seed: seedBase + 90 + wristIdx,

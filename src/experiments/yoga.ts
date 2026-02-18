@@ -1,8 +1,8 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose, stone, cream } from '../palette';
-import type { PersonState } from './creature-shared';
+import { sage, honey, rose, stone, cream, charcoal } from '../palette';
+import type { PersonState, LimbColors } from './creature-shared';
 import {
   NOSE, L_EYE, R_EYE,
   L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW,
@@ -11,23 +11,81 @@ import {
   L_MOUTH, R_MOUTH,
   updatePeople, drawPerson, makePerson, makeDemoPose,
 } from './creature-shared';
+import { getYogaPose } from '../yoga-classify';
+import type { YogaPose } from '../yoga-classify';
 
-// Joint pairs for accuracy comparison
-const COMPARE_JOINTS = [
-  L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW,
-  L_WRIST, R_WRIST, L_HIP, R_HIP,
-  L_KNEE, R_KNEE, L_ANKLE, R_ANKLE,
+// Angle triplets: [parent, vertex, child] — we measure the angle at the vertex
+// This makes matching position-independent: only body shape matters
+const ANGLE_TRIPLETS: [number, number, number][] = [
+  [L_ELBOW, L_SHOULDER, L_HIP],    // left shoulder angle
+  [R_ELBOW, R_SHOULDER, R_HIP],    // right shoulder angle
+  [L_SHOULDER, L_ELBOW, L_WRIST],  // left elbow angle
+  [R_SHOULDER, R_ELBOW, R_WRIST],  // right elbow angle
+  [L_SHOULDER, L_HIP, L_KNEE],     // left hip angle
+  [R_SHOULDER, R_HIP, R_KNEE],     // right hip angle
+  [L_HIP, L_KNEE, L_ANKLE],        // left knee angle
+  [R_HIP, R_KNEE, R_ANKLE],        // right knee angle
 ];
+
 
 // Pose definitions: name + target positions (relative to center)
 interface PoseDef {
   name: string;
   holdTime: number;  // seconds to hold
+  classifyAs?: YogaPose; // when set, use getYogaPose() for hold detection
   // Offsets from center for each joint
   build(cx: number): { x: number; y: number }[];
 }
 
 const POSES: PoseDef[] = [
+  {
+    name: "mountain",
+    holdTime: 3,
+    classifyAs: "mountain",
+    build(cx) {
+      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
+      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
+      set(NOSE, cx, 1.5);
+      set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
+      set(L_SHOULDER, cx - 1.5, 3.0); set(R_SHOULDER, cx + 1.5, 3.0);
+      // Arms relaxed at sides
+      set(L_ELBOW, cx - 1.6, 4.2); set(R_ELBOW, cx + 1.6, 4.2);
+      set(L_WRIST, cx - 1.5, 5.3); set(R_WRIST, cx + 1.5, 5.3);
+      set(L_HIP, cx - 1.0, 5.5); set(R_HIP, cx + 1.0, 5.5);
+      set(L_KNEE, cx - 1.0, 7.0); set(R_KNEE, cx + 1.0, 7.0);
+      set(L_ANKLE, cx - 1.0, 8.5); set(R_ANKLE, cx + 1.0, 8.5);
+      set(L_MOUTH, cx - 0.4, 1.9); set(R_MOUTH, cx + 0.4, 1.9);
+      return p;
+    },
+  },
+  {
+    name: "volcano",
+    holdTime: 3,
+    classifyAs: "volcano",
+    build(cx) {
+      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
+      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
+      set(NOSE, cx, 1.5);
+      set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
+      set(L_SHOULDER, cx - 1.5, 3.0); set(R_SHOULDER, cx + 1.5, 3.0);
+      // Arms straight up
+      set(L_ELBOW, cx - 1.2, 1.8); set(R_ELBOW, cx + 1.2, 1.8);
+      set(L_WRIST, cx - 0.8, 0.5); set(R_WRIST, cx + 0.8, 0.5);
+      set(L_HIP, cx - 1.0, 5.5); set(R_HIP, cx + 1.0, 5.5);
+      set(L_KNEE, cx - 1.2, 7.0); set(R_KNEE, cx + 1.2, 7.0);
+      set(L_ANKLE, cx - 1.5, 8.5); set(R_ANKLE, cx + 1.5, 8.5);
+      set(L_MOUTH, cx - 0.4, 1.9); set(R_MOUTH, cx + 0.4, 1.9);
+      return p;
+    },
+  },
+  {
+    name: "T-pose",
+    holdTime: 3,
+    classifyAs: "tpose",
+    build(cx) {
+      return makeDemoPose(cx);
+    },
+  },
   {
     name: "tree pose",
     holdTime: 4,
@@ -69,32 +127,6 @@ const POSES: PoseDef[] = [
     },
   },
   {
-    name: "T-pose",
-    holdTime: 3,
-    build(cx) {
-      return makeDemoPose(cx);
-    },
-  },
-  {
-    name: "arms up",
-    holdTime: 3,
-    build(cx) {
-      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
-      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
-      set(NOSE, cx, 1.5);
-      set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
-      set(L_SHOULDER, cx - 1.5, 3.0); set(R_SHOULDER, cx + 1.5, 3.0);
-      // Arms straight up
-      set(L_ELBOW, cx - 1.2, 1.8); set(R_ELBOW, cx + 1.2, 1.8);
-      set(L_WRIST, cx - 0.8, 0.5); set(R_WRIST, cx + 0.8, 0.5);
-      set(L_HIP, cx - 1.0, 5.5); set(R_HIP, cx + 1.0, 5.5);
-      set(L_KNEE, cx - 1.2, 7.0); set(R_KNEE, cx + 1.2, 7.0);
-      set(L_ANKLE, cx - 1.5, 8.5); set(R_ANKLE, cx + 1.5, 8.5);
-      set(L_MOUTH, cx - 0.4, 1.9); set(R_MOUTH, cx + 0.4, 1.9);
-      return p;
-    },
-  },
-  {
     name: "wide stance",
     holdTime: 3,
     build(cx) {
@@ -123,38 +155,62 @@ let people: PersonState[] = [];
 // Pose sequence state
 let currentPoseIdx = 0;
 let holdTimer = 0;
-let poseAccuracy = 0;
-const ACCURACY_THRESHOLD = 0.6; // accuracy needed to count as "holding"
+let poseMatched = false; // whether classifier says player is in the right pose
 let posesCompleted = 0;
 let transitionTimer = 0;
 const TRANSITION_DURATION = 2;
 let inTransition = true;
 
-// Per-joint accuracy for visualization
+// Per-angle accuracy for limb coloring
 let jointAccuracies: number[] = [];
+let playerLimbColors: LimbColors = {};
 
-// Target ghost person
-let targetPerson: PersonState;
+const LIMB_GOOD = 0.7; // angle accuracy threshold for "aligned"
+
+/** Compute per-limb colors from angle accuracies. Good limbs = undefined (use palette), bad = charcoal */
+function computeLimbColors(accs: number[]): LimbColors {
+  if (accs.length < 8) return {};
+  const ok = (i: number) => accs[i] >= LIMB_GOOD;
+  // ANGLE_TRIPLETS indices: 0=L_SHOULDER, 1=R_SHOULDER, 2=L_ELBOW, 3=R_ELBOW,
+  //                         4=L_HIP, 5=R_HIP, 6=L_KNEE, 7=R_KNEE
+  return {
+    lArm: ok(0) && ok(2) ? undefined : charcoal,
+    rArm: ok(1) && ok(3) ? undefined : charcoal,
+    lLeg: ok(4) && ok(6) ? undefined : charcoal,
+    rLeg: ok(5) && ok(7) ? undefined : charcoal,
+    body: ok(0) && ok(1) && ok(4) && ok(5) ? undefined : charcoal,
+  };
+}
+
+/** Angle (radians) at vertex B formed by points A→B→C */
+function angleAt(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }): number {
+  const bax = a.x - b.x, bay = a.y - b.y;
+  const bcx = c.x - b.x, bcy = c.y - b.y;
+  const dot = bax * bcx + bay * bcy;
+  const cross = bax * bcy - bay * bcx;
+  return Math.atan2(Math.abs(cross), dot); // 0..π
+}
 
 function calcAccuracy(player: { x: number; y: number }[], target: { x: number; y: number }[]): { overall: number; joints: number[] } {
   const joints: number[] = [];
   let total = 0;
 
-  for (const idx of COMPARE_JOINTS) {
-    if (idx >= player.length || idx >= target.length) {
+  for (const [a, b, c] of ANGLE_TRIPLETS) {
+    if (a >= player.length || b >= player.length || c >= player.length ||
+        a >= target.length || b >= target.length || c >= target.length) {
       joints.push(0);
       continue;
     }
-    const dx = player[idx].x - target[idx].x;
-    const dy = player[idx].y - target[idx].y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    // Map distance to accuracy: 0 dist = 1.0, >2.0 dist = 0.0
-    const acc = Math.max(0, 1 - dist / 2.0);
+    const playerAngle = angleAt(player[a], player[b], player[c]);
+    const targetAngle = angleAt(target[a], target[b], target[c]);
+    const diff = Math.abs(playerAngle - targetAngle);
+    // Map angle difference to accuracy: 0 diff = 1.0, >45° = 0.0
+    const acc = Math.max(0, 1 - diff / (Math.PI / 4));
     joints.push(acc);
     total += acc;
   }
 
-  return { overall: total / COMPARE_JOINTS.length, joints };
+  return { overall: total / ANGLE_TRIPLETS.length, joints };
 }
 
 function getCurrentTarget(): { x: number; y: number }[] {
@@ -178,25 +234,17 @@ export const yoga: Experiment = {
     people = [];
     currentPoseIdx = 0;
     holdTimer = 0;
-    poseAccuracy = 0;
+    poseMatched = false;
     posesCompleted = 0;
     inTransition = true;
     transitionTimer = 0;
     jointAccuracies = [];
-
-    targetPerson = {
-      ...makePerson(),
-      pts: getCurrentTarget(),
-    };
   },
 
   update() {},
 
   updatePose(poses: Landmarks[], dt: number) {
     updatePeople(poses, people, dt, w);
-
-    // Update target ghost's pose
-    targetPerson.pts = getCurrentTarget();
 
     if (inTransition) {
       transitionTimer += dt;
@@ -206,43 +254,50 @@ export const yoga: Experiment = {
       return;
     }
 
-    // Calculate accuracy
-    if (people.length > 0 && people[0].pts.length >= 33) {
-      const result = calcAccuracy(people[0].pts, targetPerson.pts);
-      poseAccuracy = poseAccuracy * 0.8 + result.overall * 0.2;
-      jointAccuracies = result.joints;
+    const pose = POSES[currentPoseIdx];
 
-      // Count hold time when accuracy is good enough
-      if (poseAccuracy >= ACCURACY_THRESHOLD) {
+    if (people.length > 0 && people[0].pts.length >= 33) {
+      const playerPts = people[0].pts;
+
+      // Per-limb accuracy for coloring (always compare against target ghost)
+      const targetPts = getCurrentTarget();
+      const result = calcAccuracy(playerPts, targetPts);
+      jointAccuracies = result.joints;
+      playerLimbColors = computeLimbColors(jointAccuracies);
+
+      // Hold detection: use classifier when available, otherwise angle accuracy
+      if (pose.classifyAs) {
+        poseMatched = getYogaPose(playerPts) === pose.classifyAs;
+      } else {
+        const overall = result.overall;
+        poseMatched = overall >= 0.6;
+      }
+
+      if (poseMatched) {
         holdTimer += dt;
-        if (holdTimer >= POSES[currentPoseIdx].holdTime) {
+        if (holdTimer >= pose.holdTime) {
           advancePose();
         }
       } else {
-        // Decay hold timer slowly when not matching
         holdTimer = Math.max(0, holdTimer - dt * 0.5);
       }
     }
   },
 
   demo() {
-    currentPoseIdx = 1; // warrior II
-    holdTimer = 2;
-    poseAccuracy = 0.72;
+    currentPoseIdx = 2; // T-pose
+    holdTimer = 1.5;
+    poseMatched = true;
     posesCompleted = 2;
     inTransition = false;
     transitionTimer = 0;
 
-    targetPerson = {
-      ...makePerson(),
-      pts: POSES[1].build(w * 0.5),
-    };
-
-    // Player roughly matching pose at right side
-    const playerPts = POSES[1].build(w * 0.7);
-    // Shift some joints slightly for imperfect match
-    playerPts[L_WRIST] = { x: playerPts[L_WRIST].x + 0.5, y: playerPts[L_WRIST].y - 0.3 };
-    playerPts[R_KNEE] = { x: playerPts[R_KNEE].x - 0.3, y: playerPts[R_KNEE].y + 0.2 };
+    // Player in T-pose with some limbs slightly off
+    const playerPts = makeDemoPose(w * 0.5);
+    // Shift left wrist down (bad left elbow angle)
+    playerPts[L_WRIST] = { x: playerPts[L_WRIST].x, y: playerPts[L_WRIST].y + 1.0 };
+    // Shift right knee out (bad right knee angle)
+    playerPts[R_KNEE] = { x: playerPts[R_KNEE].x + 0.8, y: playerPts[R_KNEE].y };
 
     people = [{
       ...makePerson(),
@@ -254,59 +309,24 @@ export const yoga: Experiment = {
       handPhase: 1.5,
     }];
 
-    // Calculate accuracy for demo
-    const result = calcAccuracy(playerPts, targetPerson.pts);
+    // Calculate limb coloring for demo
+    const targetPts = POSES[2].build(w * 0.5);
+    const result = calcAccuracy(playerPts, targetPts);
     jointAccuracies = result.joints;
+    playerLimbColors = computeLimbColors(jointAccuracies);
   },
 
   draw(ctx) {
-    // Draw target pose (left side, ghost)
-    ctx.save();
-    ctx.globalAlpha = 0.3;
-    drawPerson(ctx, rc, targetPerson, 2, 800);
-    ctx.restore();
-
-    // Draw target label
-    pxText(ctx, "target", w * 0.5, 0.5, "bold 0.25px monospace", "rgba(255,255,255,0.4)", "center");
-
     // Draw player(s)
     if (people.length === 0) {
       pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', stone, 'center');
       return;
     }
 
-    for (let i = 0; i < people.length; i++) {
+    // First player gets limb coloring; others draw normally
+    drawPerson(ctx, rc, people[0], 0, 0, playerLimbColors);
+    for (let i = 1; i < people.length; i++) {
       drawPerson(ctx, rc, people[i], i, i * 100);
-    }
-
-    // Joint accuracy indicators
-    if (people.length > 0 && people[0].pts.length >= 33 && jointAccuracies.length > 0) {
-      const p = people[0].pts;
-      for (let ji = 0; ji < COMPARE_JOINTS.length; ji++) {
-        const idx = COMPARE_JOINTS[ji];
-        const acc = jointAccuracies[ji];
-        const r = 0.15;
-
-        if (acc > 0.8) {
-          // Good — green ring
-          rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: sage, strokeWidth: 0.04,
-            fill: 'none', roughness: 0.8, seed: 600 + ji,
-          });
-        } else if (acc > 0.4) {
-          // OK — yellow ring
-          rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: honey, strokeWidth: 0.04,
-            fill: 'none', roughness: 0.8, seed: 600 + ji,
-          });
-        } else {
-          // Bad — red ring
-          rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: rose, strokeWidth: 0.04,
-            fill: 'none', roughness: 0.8, seed: 600 + ji,
-          });
-        }
-      }
     }
 
     // Pose name (top center)
@@ -338,7 +358,7 @@ export const yoga: Experiment = {
 
       // Fill
       if (progress > 0.01) {
-        const fillColor = poseAccuracy >= ACCURACY_THRESHOLD ? sage : rose;
+        const fillColor = poseMatched ? sage : rose;
         rc.rectangle(barX, barY, barW * Math.min(1, progress), barH, {
           fill: fillColor, fillStyle: 'solid', stroke: 'none',
           roughness: 0.8, seed: 701,
@@ -350,9 +370,10 @@ export const yoga: Experiment = {
       pxText(ctx, `hold: ${remaining.toFixed(1)}s`, w / 2, barY - 0.15, "0.2px monospace", "rgba(255,255,255,0.5)", "center");
     }
 
-    // Accuracy readout
-    const accColor = poseAccuracy >= ACCURACY_THRESHOLD ? sage : poseAccuracy > 0.3 ? honey : rose;
-    pxText(ctx, `${Math.round(poseAccuracy * 100)}%`, w - 0.3, 0.6, "bold 0.35px monospace", accColor, "right");
+    // Match status
+    const statusColor = poseMatched ? sage : rose;
+    const statusText = poseMatched ? "yes!" : "no";
+    pxText(ctx, statusText, w - 0.3, 0.6, "bold 0.35px monospace", statusColor, "right");
 
     // Poses completed
     pxText(ctx, `poses: ${posesCompleted}`, 0.3, 0.6, "0.2px monospace", "rgba(255,255,255,0.4)");

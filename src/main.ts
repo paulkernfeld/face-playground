@@ -16,6 +16,7 @@ import { yoga } from "./experiments/yoga";
 import { posture } from "./experiments/posture";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
+import { startPoseTest } from "./pose-test";
 import { pxText } from "./px-text";
 import { experimentColors, honey, warning as warningColor, canvasBg } from "./palette";
 
@@ -494,10 +495,13 @@ document.addEventListener("keydown", (e) => {
 // -- Boot --
 const params = new URLSearchParams(window.location.search);
 const angleTestParam = params.get("angleTest");
+const poseTestParam = params.get("poseTest");
 const captureParam = params.get("capture");
 const demoParam = params.get("demo");
 if (angleTestParam !== null) {
   startAngleTest();
+} else if (poseTestParam !== null) {
+  startPoseTest();
 } else if (captureParam !== null) {
   document.getElementById("btn-capture")!.classList.remove("hidden");
   enterExperiment(captureExperiment);
