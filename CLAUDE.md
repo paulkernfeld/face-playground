@@ -11,6 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `?capture&prompt=<name>` — capture raw video frame to `fixtures/<name>.png` (toggle video with `v`, press Space to save)
 - `?angleTest` — minimal FaceMesh page that writes pitch/yaw to `#angles` DOM element (used by Playwright tests)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
+- `npx tsx tests/yoga-classify.test.ts` — pure Node yoga classifier tests (~60ms, no browser needed)
+- `npx playwright test tests/extract-landmarks.spec.ts` — one-time extraction of yoga landmark fixtures (slow, needs Chrome)
 - Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 - **Before pushing**: ensure `git status` is clean — no stale screenshots, untracked tool dirs, or uncommitted changes
 
@@ -98,6 +100,8 @@ interface Experiment {
 - Headless Chrome has a fake camera, so `getUserMedia` succeeds — mock failures with `page.addInitScript`
 - Fake camera from static image: use `setupFakeCamera(page, url)` from `tests/fake-camera.ts` — overrides `getUserMedia` with `canvas.captureStream()`. Video element must be `muted` for autoplay without user interaction.
 - Head pose fixtures live in `fixtures/` — raw 640x480 video frames, NOT canvas overlays. Served by Vite at `/fixtures/<name>.png`.
+- Yoga pose fixtures prefixed `yoga-` (e.g. `fixtures/yoga-mountain.png`) with extracted `.landmarks.json` for fast Node tests
+- `tsx@3.12.x` pinned — newer tsx uses esbuild 0.18+ which requires macOS 12+
 - Git worktrees go in `.worktrees/` (already in `.gitignore`)
 - When feasible, take a Playwright screenshot of completed visual features and open in Preview for user verification
 - Vite 4.x pinned due to macOS 11 / esbuild compatibility (newer esbuild requires macOS 12+)
