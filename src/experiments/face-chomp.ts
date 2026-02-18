@@ -407,12 +407,12 @@ export const faceChomp: Experiment = {
     // Fruits
     for (const f of fruits) {
       rc.circle(f.x, f.y, FRUIT_R * 2, {
-        fill: sage, fillStyle: 'solid', stroke: 'none',
+        fill: rose, fillStyle: 'solid', stroke: 'none',
         roughness: 1.2, seed: f.seed,
       });
       // Stem
       rc.line(f.x, f.y - FRUIT_R, f.x + 0.05, f.y - FRUIT_R - 0.1, {
-        stroke: '#6A9A70', strokeWidth: 0.03, roughness: 1.5, seed: f.seed + 500,
+        stroke: sage, strokeWidth: 0.03, roughness: 1.5, seed: f.seed + 500,
       });
     }
 

@@ -57,7 +57,15 @@ interface Experiment {
 - **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
 - **UI: evaluate screenshot button** — is it used enough to justify UI space?
 - **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
+- **Light background**: Switch from dark canvas bg to light — users need light for camera tracking anyway
+- **Yoga: use angles not positions** — match joint angles instead of absolute body position, so it works regardless of where you stand
+- **Yoga: alignment visibility** — unaligned body parts render in charcoal, aligned parts in color; show full limb segments (arm, not just elbow)
+- **Head cursor: remove trail** — trail is unnecessary clutter
+- **DDR: fixed repeating pattern** — replace random arrows with: up, center, down, center, left, right, left, right (loop forever)
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
+- **Hide tension experiment** — not ready for public, remove from menu
+- **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
+- **Chomp: apple sound** — satisfying sound effect when eating an apple
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - Sent to friends for feedback — waiting for responses
 
