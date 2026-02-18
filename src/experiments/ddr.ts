@@ -2,115 +2,176 @@ import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 
-// Directions: up, down, left, right
-type Dir = 'up' | 'down' | 'left' | 'right';
-
 interface Arrow {
-  dir: Dir;
-  spawnTime: number;    // when arrow was created
-  targetTime: number;   // when arrow should reach center
-  hit?: 'perfect' | 'good' | 'miss';
+  // Times are in game seconds (relative to audioStartTime)
+  spawnTime: number;
+  targetTime: number;
+  hit?: 'hit' | 'miss';
   hitTime?: number;
 }
 
-// Timing windows (seconds)
-const PERFECT_WINDOW = 0.12;
-const GOOD_WINDOW = 0.25;
-const MISS_WINDOW = 0.4;
+// Head pitch threshold for "nodding down" (radians)
+const NOD_THRESH = 0.25;
 
-// Head movement thresholds (radians)
-const PITCH_THRESH = 0.25;
-const YAW_THRESH = 0.2;
+// Arrow travel time (2 bars at 60 BPM = 8 beats = 8s)
+const TRAVEL_TIME = 8;
 
-// Arrow travel time from edge to center
-const TRAVEL_TIME = 1.5;
+// Beat grid
+const BPM = 60;
+const BEAT_INTERVAL = 60 / BPM; // 1.0s
 
-// Spawn timing
-const MIN_SPAWN_INTERVAL = 0.6;
-const MAX_SPAWN_INTERVAL = 1.4;
+// How far ahead to schedule audio (seconds)
+const SCHEDULE_AHEAD = 0.2;
+
+// --- Web Audio ---
+let audioCtx: AudioContext | null = null;
+let audioStartTime = 0;
+let scheduledUpToBeat = 0;
+let nextSpawnBeat = 1;
+// Track which arrows we've already judged at their beat
+let nextJudgeBeat = 1;
+
+function ensureAudio(): AudioContext {
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function beatTime(beat: number): number {
+  return audioStartTime + beat * BEAT_INTERVAL;
+}
+
+function now(): number {
+  if (!audioCtx) return 0;
+  return audioCtx.currentTime - audioStartTime;
+}
+
+function scheduleKick(atTime: number, accent: boolean) {
+  const ctx = ensureAudio();
+
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(accent ? 160 : 120, atTime);
+  osc.frequency.exponentialRampToValueAtTime(30, atTime + 0.08);
+
+  const gain = ctx.createGain();
+  const vol = accent ? 0.3 : 0.25;
+  gain.gain.setValueAtTime(vol, atTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, atTime + 0.15);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(atTime);
+  osc.stop(atTime + 0.2);
+}
+
+function playHit() {
+  const ctx = ensureAudio();
+  const t = ctx.currentTime;
+
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(880, t);
+  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.05);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.15);
+}
+
+function playMiss() {
+  const ctx = ensureAudio();
+  const t = ctx.currentTime;
+
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(200, t);
+  osc.frequency.exponentialRampToValueAtTime(80, t + 0.15);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.12, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
+
+function scheduleBeats() {
+  const ctx = ensureAudio();
+  const horizon = ctx.currentTime + SCHEDULE_AHEAD;
+
+  while (beatTime(scheduledUpToBeat) < horizon) {
+    const t = beatTime(scheduledUpToBeat);
+    if (t >= ctx.currentTime - 0.05) {
+      const accent = scheduledUpToBeat % 4 === 0;
+      scheduleKick(Math.max(t, ctx.currentTime), accent);
+    }
+
+    if (scheduledUpToBeat >= nextSpawnBeat) {
+      spawnArrowOnBeat(scheduledUpToBeat);
+      nextSpawnBeat = scheduledUpToBeat + 1;
+    }
+
+    scheduledUpToBeat++;
+  }
+}
 
 // Arrow visual
-const ARROW_SIZE = 0.6;
-const TARGET_SIZE = 0.7;
+const ARROW_SIZE = 1.2;
+const TARGET_SIZE = 1.4;
 
-// Colors per direction
-const DIR_COLORS: Record<Dir, string> = {
-  up: '#FF6B6B',
-  down: '#2EC4B6',
-  left: '#7C5CFF',
-  right: '#FFD93D',
-};
-
-// Target positions (center of screen)
+// Target position — arrows fall from top to this line
 const TARGET_X = 8;
-const TARGET_Y = 4.5;
+const TARGET_Y = 7;
 
-// Start positions per direction (edges)
-function getStartPos(dir: Dir): { x: number; y: number } {
-  switch (dir) {
-    case 'up': return { x: TARGET_X, y: -0.5 };
-    case 'down': return { x: TARGET_X, y: 9.5 };
-    case 'left': return { x: -0.5, y: TARGET_Y };
-    case 'right': return { x: 16.5, y: TARGET_Y };
-  }
+function getStartPos(): { x: number; y: number } {
+  return { x: TARGET_X, y: -1 };
 }
 
 let arrows: Arrow[] = [];
 let score = 0;
 let combo = 0;
 let maxCombo = 0;
-let nextSpawnIn = 1.0;
-let gameTime = 0;
 let feedbackMsg = '';
 let feedbackTime = 0;
 let feedbackColor = '';
 let w = 16, h = 9;
 let rc: GameRoughCanvas;
-let lastDir: Dir | null = null;
-let dirHeld = false;
-
-// Which direction is the head pointing?
-function getHeadDir(pitch: number, yaw: number): Dir | null {
-  // pitch positive = looking down, negative = looking up
-  // yaw positive = turned left, negative = turned right
-  const ap = Math.abs(pitch);
-  const ay = Math.abs(yaw);
-
-  if (ap < PITCH_THRESH && ay < YAW_THRESH) return null;
-
-  if (ap > ay) {
-    return pitch > 0 ? 'down' : 'up';
-  } else {
-    return yaw > 0 ? 'left' : 'right';
-  }
-}
+let currentPitch = 0;
 
 function showFeedback(msg: string, color: string) {
   feedbackMsg = msg;
-  feedbackTime = gameTime;
+  feedbackTime = now();
   feedbackColor = color;
 }
 
-function spawnArrow() {
-  const dirs: Dir[] = ['up', 'down', 'left', 'right'];
-  const dir = dirs[Math.floor(Math.random() * dirs.length)];
+function spawnArrowOnBeat(beat: number) {
+  const targetAudioTime = beatTime(beat);
+  const spawnAudioTime = targetAudioTime - TRAVEL_TIME;
   arrows.push({
-    dir,
-    spawnTime: gameTime,
-    targetTime: gameTime + TRAVEL_TIME,
+    spawnTime: spawnAudioTime - audioStartTime,
+    targetTime: targetAudioTime - audioStartTime,
   });
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, dir: Dir, size: number, color: string, alpha: number, seed: number) {
+function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, alpha: number, seed: number) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(x, y);
+  // Point downward
+  ctx.rotate(Math.PI);
 
-  // Rotate based on direction
-  const rotations: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
-  ctx.rotate(rotations[dir]);
-
-  // Draw arrow pointing up using rough.js
   const s = size / 2;
   rc.polygon([
     [0, -s],
@@ -140,187 +201,136 @@ export const ddr: Experiment = {
     score = 0;
     combo = 0;
     maxCombo = 0;
-    nextSpawnIn = 1.5;
-    gameTime = 0;
     feedbackMsg = '';
-    lastDir = null;
-    dirHeld = false;
+    currentPitch = 0;
+
+    const ac = ensureAudio();
+    audioStartTime = ac.currentTime;
+    scheduledUpToBeat = 0;
+    nextSpawnBeat = 1;
+    nextJudgeBeat = 1;
   },
 
-  update(face: FaceData | null, dt: number) {
-    gameTime += dt;
+  update(face: FaceData | null, _dt: number) {
+    const t = now();
 
-    // Spawn arrows
-    nextSpawnIn -= dt;
-    if (nextSpawnIn <= 0) {
-      spawnArrow();
-      nextSpawnIn = MIN_SPAWN_INTERVAL + Math.random() * (MAX_SPAWN_INTERVAL - MIN_SPAWN_INTERVAL);
-      // Speed up over time
-      const speedup = Math.min(0.4, gameTime / 120);
-      nextSpawnIn = Math.max(0.4, nextSpawnIn - speedup);
-    }
+    scheduleBeats();
 
-    // Get current head direction
-    let currentDir: Dir | null = null;
+    // Track current head pitch
     if (face) {
-      currentDir = getHeadDir(face.headPitch, face.headYaw);
+      currentPitch = face.headPitch;
     }
 
-    // Detect direction change (trigger on new direction, not hold)
-    const justMoved = currentDir !== null && (currentDir !== lastDir || !dirHeld);
-    if (currentDir !== lastDir) dirHeld = false;
-    if (currentDir !== null && !dirHeld) dirHeld = true;
-    lastDir = currentDir;
-
-    // Check for hits on direction change
-    if (justMoved && currentDir) {
-      let bestArrow: Arrow | null = null;
-      let bestDelta = Infinity;
-
-      for (const arrow of arrows) {
-        if (arrow.hit) continue;
-        if (arrow.dir !== currentDir) continue;
-        const delta = Math.abs(gameTime - arrow.targetTime);
-        if (delta < MISS_WINDOW && delta < bestDelta) {
-          bestArrow = arrow;
-          bestDelta = delta;
-        }
-      }
-
-      if (bestArrow) {
-        if (bestDelta < PERFECT_WINDOW) {
-          bestArrow.hit = 'perfect';
-          bestArrow.hitTime = gameTime;
+    // Judge arrows at their target time: is head nodded down?
+    for (const arrow of arrows) {
+      if (arrow.hit) continue;
+      if (t >= arrow.targetTime) {
+        const nodding = currentPitch > NOD_THRESH;
+        if (nodding) {
+          arrow.hit = 'hit';
+          arrow.hitTime = t;
           score += 100 * (1 + Math.floor(combo / 10));
           combo++;
-          showFeedback('PERFECT!', '#FFD93D');
-        } else if (bestDelta < GOOD_WINDOW) {
-          bestArrow.hit = 'good';
-          bestArrow.hitTime = gameTime;
-          score += 50 * (1 + Math.floor(combo / 10));
-          combo++;
-          showFeedback('GOOD', '#2EC4B6');
+          maxCombo = Math.max(maxCombo, combo);
+          showFeedback('HIT!', '#2EC4B6');
+          playHit();
+        } else {
+          arrow.hit = 'miss';
+          arrow.hitTime = t;
+          combo = 0;
+          showFeedback('MISS', '#FF6B6B');
+          playMiss();
         }
-        maxCombo = Math.max(maxCombo, combo);
-      }
-    }
-
-    // Mark missed arrows
-    for (const arrow of arrows) {
-      if (!arrow.hit && gameTime > arrow.targetTime + MISS_WINDOW) {
-        arrow.hit = 'miss';
-        arrow.hitTime = gameTime;
-        combo = 0;
-        showFeedback('MISS', '#FF6B6B');
       }
     }
 
     // Clean up old arrows
     arrows = arrows.filter(a => {
       if (!a.hit) return true;
-      return gameTime - (a.hitTime ?? 0) < 0.5;
+      return t - (a.hitTime ?? 0) < 0.5;
     });
   },
 
   demo() {
-    gameTime = 5;
+    audioStartTime = 0;
+    const fakeNow = 5;
     score = 1250;
     combo = 8;
     maxCombo = 12;
-    feedbackMsg = 'PERFECT!';
-    feedbackTime = gameTime - 0.1;
-    feedbackColor = '#FFD93D';
+    feedbackMsg = 'HIT!';
+    feedbackTime = fakeNow - 0.1;
+    feedbackColor = '#2EC4B6';
     arrows = [
-      { dir: 'up', spawnTime: gameTime - 0.8, targetTime: gameTime + 0.7 },
-      { dir: 'left', spawnTime: gameTime - 0.5, targetTime: gameTime + 1.0 },
-      { dir: 'right', spawnTime: gameTime - 0.2, targetTime: gameTime + 1.3 },
-      { dir: 'down', spawnTime: gameTime - 1.2, targetTime: gameTime + 0.3 },
-      // A just-hit arrow fading out
-      { dir: 'up', spawnTime: gameTime - 2, targetTime: gameTime - 0.05, hit: 'perfect', hitTime: gameTime - 0.1 },
+      { spawnTime: fakeNow - 6, targetTime: fakeNow + 2 },
+      { spawnTime: fakeNow - 5, targetTime: fakeNow + 3 },
+      { spawnTime: fakeNow - 4, targetTime: fakeNow + 4 },
+      { spawnTime: fakeNow - 3, targetTime: fakeNow + 5 },
+      { spawnTime: fakeNow - 8, targetTime: fakeNow - 0.05, hit: 'hit', hitTime: fakeNow - 0.1 },
     ];
   },
 
   draw(ctx, ww, hh) {
     w = ww; h = hh;
+    const t = audioCtx ? now() : 5;
 
-    // Target zone — faint outlines for each direction
-    for (const dir of ['up', 'down', 'left', 'right'] as Dir[]) {
-      const color = DIR_COLORS[dir];
-      // Offset target slightly in the direction it comes from
-      const offsets: Record<Dir, { x: number; y: number }> = {
-        up: { x: 0, y: -0.9 },
-        down: { x: 0, y: 0.9 },
-        left: { x: -0.9, y: 0 },
-        right: { x: 0.9, y: 0 },
-      };
-      const off = offsets[dir];
-      const tx = TARGET_X + off.x;
-      const ty = TARGET_Y + off.y;
+    // Target line
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = '#2EC4B6';
+    ctx.lineWidth = 0.03;
+    ctx.beginPath();
+    ctx.moveTo(TARGET_X - 2, TARGET_Y);
+    ctx.lineTo(TARGET_X + 2, TARGET_Y);
+    ctx.stroke();
+    ctx.restore();
 
-      ctx.save();
-      ctx.globalAlpha = 0.2;
-      ctx.translate(tx, ty);
-      const rotations: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
-      ctx.rotate(rotations[dir]);
-
-      rc.polygon([
-        [0, -TARGET_SIZE / 2],
-        [TARGET_SIZE * 0.4, TARGET_SIZE * 0.15],
-        [TARGET_SIZE * 0.15, TARGET_SIZE * 0.05],
-        [TARGET_SIZE * 0.15, TARGET_SIZE / 2],
-        [-TARGET_SIZE * 0.15, TARGET_SIZE / 2],
-        [-TARGET_SIZE * 0.15, TARGET_SIZE * 0.05],
-        [-TARGET_SIZE * 0.4, TARGET_SIZE * 0.15],
-        [0, -TARGET_SIZE / 2],
-      ], {
-        fill: 'none', stroke: color, strokeWidth: 0.03,
-        roughness: 1.5, seed: 500 + ['up', 'down', 'left', 'right'].indexOf(dir),
-      });
-
-      ctx.restore();
-    }
+    // Target arrow outline
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.translate(TARGET_X, TARGET_Y);
+    ctx.rotate(Math.PI);
+    rc.polygon([
+      [0, -TARGET_SIZE / 2],
+      [TARGET_SIZE * 0.4, TARGET_SIZE * 0.15],
+      [TARGET_SIZE * 0.15, TARGET_SIZE * 0.05],
+      [TARGET_SIZE * 0.15, TARGET_SIZE / 2],
+      [-TARGET_SIZE * 0.15, TARGET_SIZE / 2],
+      [-TARGET_SIZE * 0.15, TARGET_SIZE * 0.05],
+      [-TARGET_SIZE * 0.4, TARGET_SIZE * 0.15],
+      [0, -TARGET_SIZE / 2],
+    ], {
+      fill: 'none', stroke: '#2EC4B6', strokeWidth: 0.03,
+      roughness: 1.5, seed: 500,
+    });
+    ctx.restore();
 
     // Draw arrows in flight
     for (const arrow of arrows) {
-      const start = getStartPos(arrow.dir);
-      const offsets: Record<Dir, { x: number; y: number }> = {
-        up: { x: 0, y: -0.9 },
-        down: { x: 0, y: 0.9 },
-        left: { x: -0.9, y: 0 },
-        right: { x: 0.9, y: 0 },
-      };
-      const off = offsets[arrow.dir];
-      const targetX = TARGET_X + off.x;
-      const targetY = TARGET_Y + off.y;
-
-      const progress = (gameTime - arrow.spawnTime) / TRAVEL_TIME;
+      const start = getStartPos();
+      const progress = (t - arrow.spawnTime) / TRAVEL_TIME;
 
       let alpha = 1;
       let x: number, y: number;
 
       if (arrow.hit) {
-        // Hit or miss — show at target and fade
-        x = targetX;
-        y = targetY;
-        const fadeProgress = (gameTime - (arrow.hitTime ?? 0)) / 0.5;
+        x = TARGET_X;
+        y = TARGET_Y;
+        const fadeProgress = (t - (arrow.hitTime ?? 0)) / 0.5;
         alpha = Math.max(0, 1 - fadeProgress);
         if (arrow.hit === 'miss') alpha *= 0.3;
       } else {
-        // Lerp from start to target
-        x = start.x + (targetX - start.x) * Math.min(1, progress);
-        y = start.y + (targetY - start.y) * Math.min(1, progress);
-        // Fade in at the start
+        x = start.x + (TARGET_X - start.x) * Math.min(1, progress);
+        y = start.y + (TARGET_Y - start.y) * Math.min(1, progress);
         alpha = Math.min(1, progress * 3);
       }
 
       const color = arrow.hit === 'miss' ? '#555'
-        : arrow.hit === 'perfect' ? '#fff'
-        : arrow.hit === 'good' ? '#ccc'
-        : DIR_COLORS[arrow.dir];
+        : arrow.hit === 'hit' ? '#fff'
+        : '#2EC4B6';
 
-      const size = arrow.hit ? ARROW_SIZE * (1 + (gameTime - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
+      const size = arrow.hit ? ARROW_SIZE * (1 + (t - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
 
-      drawArrow(ctx, x, y, arrow.dir, size, color, alpha, Math.floor(arrow.spawnTime * 100));
+      drawArrow(ctx, x, y, size, color, alpha, Math.floor(arrow.spawnTime * 100));
     }
 
     // Score (top right)
@@ -337,15 +347,15 @@ export const ddr: Experiment = {
     }
 
     // Feedback message (center, fades out)
-    if (feedbackMsg && gameTime - feedbackTime < 0.6) {
-      const alpha = Math.max(0, 1 - (gameTime - feedbackTime) / 0.6);
-      const yOff = (gameTime - feedbackTime) * -0.5;
+    if (feedbackMsg && t - feedbackTime < 0.6) {
+      const alpha = Math.max(0, 1 - (t - feedbackTime) / 0.6);
+      const yOff = (t - feedbackTime) * -0.5;
       ctx.globalAlpha = alpha;
       pxText(ctx, feedbackMsg, w / 2, h / 2 + yOff, "bold 0.5px Fredoka, sans-serif", feedbackColor, "center");
       ctx.globalAlpha = 1;
     }
 
     // Instructions at bottom
-    pxText(ctx, "move your head in the arrow direction", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
+    pxText(ctx, "nod your head on the beat", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
   },
 };
