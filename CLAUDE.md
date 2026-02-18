@@ -39,7 +39,9 @@ interface Experiment {
 
 **Shared body creature rendering** (`src/experiments/creature-shared.ts`): Extracted `PersonState`, `drawPerson()`, `updatePeople()`, pupil physics, sparks, palettes, and landmark constants. Body-tracking experiments should import from here rather than duplicating creature rendering code.
 
-**DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter).
+**DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter). 120 BPM kick on every beat, arrows every other beat.
+
+**Web Audio sound effects**: `face-chomp.ts` and `body-creature.ts` both have a `playDing()` function (synthesized sine sweep). If more experiments need sounds, extract to a shared module.
 
 **Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. `gameUnits` are in raw camera coords (not mirrored) — experiments mirror X themselves (e.g. `w - nose.x`).
 
@@ -61,6 +63,8 @@ interface Experiment {
 
 ## TODO
 
+**Remove items from this list when completed** — don't leave stale TODOs.
+
 - **Switch to pixel-scale coordinates**: Replace 16x9 game-unit system with pixel-scale coords (~100s-1000s). Fixes two problems at once: (1) `ctx.fillText` silently fails at sub-pixel font sizes in real browsers, (2) rough.js hardcoded offsets explode at small scales, eliminating need for `GameRoughCanvas` wrapper. All experiments + main.ts need updating. Landmarks would be delivered in pixel coords instead of game units.
 - **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math. Use `?fixture` mode + saved fixtures to verify.
 - **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
@@ -70,13 +74,10 @@ interface Experiment {
 - **Yoga: use angles not positions** — match joint angles instead of absolute body position, so it works regardless of where you stand
 - **Yoga: alignment visibility** — unaligned body parts render in charcoal, aligned parts in color; show full limb segments (arm, not just elbow)
 - **DDR: fixed repeating pattern** — replace random arrows with: up, center, down, center, left, right, left, right (loop forever)
-- **DDR: kick on every beat** — play a kick drum at 120 BPM but only spawn a head-position arrow every other beat, so the player feels the rhythm between arrows
+- **DDR: nod detection feels off** — timing/threshold for head nod detection doesn't feel right, needs tuning
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
 - **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
-- **Chomp: apple sound** — satisfying sound effect when eating an apple
-- **Chomp: pac-man color** — make the pac-man always yellow-ish, not changing color between mouth open/closed
 - **Warning system refactor** — chomp's "open your mouth" warning may overlap the main file's face-visibility warning. Refactor so main.ts sends errors/warnings down to experiments via `FaceData` or a callback, and experiments can optionally render them. Face-visibility warning should override game-level warnings.
-- **Chomp: smarter "close mouth" hint** — only show "close your mouth to move faster" when the nose cursor is far from the pac-man AND mouth is open (not always when mouth is open)
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - **Creature: thicker limbs** — limbs are too spindly/skeletal, gives a creepy look. Thicken arms and legs so creatures feel more like chunky cartoon characters
 - **Creature: fingers** — show fingers/hands instead of just wrist endpoints, even simple mitten shapes would help
