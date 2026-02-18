@@ -68,6 +68,7 @@ interface Experiment {
 - **Yoga: use angles not positions** — match joint angles instead of absolute body position, so it works regardless of where you stand
 - **Yoga: alignment visibility** — unaligned body parts render in charcoal, aligned parts in color; show full limb segments (arm, not just elbow)
 - **DDR: fixed repeating pattern** — replace random arrows with: up, center, down, center, left, right, left, right (loop forever)
+- **DDR: kick on every beat** — play a kick drum at 120 BPM but only spawn a head-position arrow every other beat, so the player feels the rhythm between arrows
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
 - **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
 - **Chomp: apple sound** — satisfying sound effect when eating an apple
