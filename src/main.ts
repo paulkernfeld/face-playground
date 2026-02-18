@@ -17,18 +17,19 @@ import { yoga } from "./experiments/yoga";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
 import { pxText } from "./px-text";
+import { experimentColors, honey, warning as warningColor } from "./palette";
 
 // -- Registry --
 const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight, ddr, yoga];
 
 const experimentMeta = [
-  { icon: '🎯', desc: 'move a cursor with your nose', color: '#FF6B6B' },
-  { icon: '😮', desc: 'pac-man, controlled with your face', color: '#FFD93D' },
-  { icon: '🧘', desc: 'monitor & release facial tension', color: '#2EC4B6' },
-  { icon: '🧌', desc: 'a silly creature that follows your body', color: '#9B59B6' },
-  { icon: '🚦', desc: 'freeze when the light turns red!', color: '#F44336' },
-  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: '#7C5CFF' },
-  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: '#4CAF50' },
+  { icon: '🎯', desc: 'move a cursor with your nose', color: experimentColors[0] },
+  { icon: '😮', desc: 'pac-man, controlled with your face', color: experimentColors[1] },
+  { icon: '🧘', desc: 'monitor & release facial tension', color: experimentColors[2] },
+  { icon: '🧌', desc: 'a silly creature that follows your body', color: experimentColors[3] },
+  { icon: '🚦', desc: 'freeze when the light turns red!', color: experimentColors[4] },
+  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: experimentColors[5] },
+  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: experimentColors[6] },
 ];
 
 // -- DOM --
@@ -49,6 +50,11 @@ let landmarker: FaceLandmarker | null = null;
 let poseLandmarker: PoseLandmarker | null = null;
 let showVideo = false;
 let rc: GameRoughCanvas;
+
+// -- Preload FaceMesh WASM + model (starts immediately, awaited when needed) --
+const VISION_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const FACE_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const filesetPromise = FilesetResolver.forVisionTasks(VISION_WASM_URL);
 
 // -- Game-unit coordinate system (16x9) --
 const GAME_W = 16;
@@ -136,7 +142,7 @@ function showMenu() {
   experiments.forEach((exp, i) => {
     const m = experimentMeta[i];
     html += `
-        <button class="experiment-card" data-exp="${i}" style="--accent: ${m.color}">
+        <button class="experiment-card${i === 1 ? ' featured' : ''}" data-exp="${i}" style="--accent: ${m.color}">
           <span class="card-icon">${m.icon}</span>
           <span class="card-name">${exp.name}</span>
           <span class="card-desc">${m.desc}</span>
@@ -228,17 +234,14 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   video.srcObject = stream;
   await video.play();
 
-  // Init FaceLandmarker (once, reuse across experiments)
+  // Init FaceLandmarker (once, reuse across experiments — fileset preloaded at boot)
   if (!landmarker) {
     const txt = loadingEl.querySelector(".loading-text");
     if (txt) txt.textContent = "loading face model\u2026";
-    const fileset = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
+    const fileset = await filesetPromise;
     landmarker = await FaceLandmarker.createFromOptions(fileset, {
       baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        modelAssetPath: FACE_MODEL_URL,
         delegate: "GPU",
       },
       outputFaceBlendshapes: true,
@@ -252,9 +255,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   if (currentExp.updatePose && !poseLandmarker) {
     const txt = loadingEl.querySelector(".loading-text");
     if (txt) txt.textContent = "loading body model\u2026";
-    const poseFileset = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
+    const poseFileset = await filesetPromise;
     poseLandmarker = await PoseLandmarker.createFromOptions(poseFileset, {
       baseOptions: {
         modelAssetPath:
@@ -446,12 +447,12 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   if (rc) {
     rc.rectangle(tx - 1.6, ty - 0.3, 3.2, 0.45, {
       fill: 'rgba(15, 15, 35, 0.7)', fillStyle: 'solid',
-      stroke: '#FFD93D', strokeWidth: 0.02,
+      stroke: warningColor, strokeWidth: 0.02,
       roughness: 1.2, seed: 900,
     });
   }
 
-  pxText(ctx, msg, tx, ty + 0.08, "600 0.28px Sora, sans-serif", "#FFD93D", "center");
+  pxText(ctx, msg, tx, ty + 0.08, "600 0.28px Sora, sans-serif", warningColor, "center");
 }
 
 function toggleDebug() {

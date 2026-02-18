@@ -1,6 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { sage, honey, rose } from '../palette';
 import type { PersonState } from './creature-shared';
 import {
   L_WRIST, R_WRIST, L_SHOULDER, R_SHOULDER,
@@ -161,17 +162,17 @@ export const redLightGreenLight: Experiment = {
 
     // Phase text
     if (phase === 'green') {
-      pxText(ctx, 'GO!', w / 2, 1.2, '700 1.2px Fredoka, sans-serif', '#4CAF50', 'center');
+      pxText(ctx, 'GO!', w / 2, 1.2, '700 1.2px Fredoka, sans-serif', sage, 'center');
     } else if (phase === 'countdown') {
       const count = Math.ceil(COUNTDOWN_DURATION - phaseTimer);
       const pulse = 1 + Math.sin(phaseTimer * Math.PI * 2) * 0.15;
       ctx.save();
       ctx.translate(w / 2, 1.2);
       ctx.scale(pulse, pulse);
-      pxText(ctx, String(count), 0, 0, '700 1.2px Fredoka, sans-serif', '#FFD93D', 'center');
+      pxText(ctx, String(count), 0, 0, '700 1.2px Fredoka, sans-serif', honey, 'center');
       ctx.restore();
     } else {
-      pxText(ctx, 'FREEZE!', w / 2, 1.2, '700 1.2px Fredoka, sans-serif', '#F44336', 'center');
+      pxText(ctx, 'FREEZE!', w / 2, 1.2, '700 1.2px Fredoka, sans-serif', rose, 'center');
     }
 
     // Debug: movement readout (console — canvas text fails at sub-pixel sizes)

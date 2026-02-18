@@ -1,6 +1,7 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { rose, sage, honey, terra } from '../palette';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -114,9 +115,9 @@ export const blendshapeDebug: Experiment = {
     // Big centered indicator with relaxation instruction
     if (tense) {
       const instruction = RELAXATION_INSTRUCTIONS[active[0].name] ?? "relax";
-      pxText(ctx, instruction, w / 2, h / 2, "bold 0.45px monospace", "#f44", "center");
+      pxText(ctx, instruction, w / 2, h / 2, "bold 0.45px monospace", rose, "center");
     } else {
-      pxText(ctx, "RELAXED", w / 2, h / 2, "bold 0.6px monospace", "#0f0", "center");
+      pxText(ctx, "RELAXED", w / 2, h / 2, "bold 0.6px monospace", sage, "center");
     }
 
     // Active tension blendshapes
@@ -140,7 +141,7 @@ export const blendshapeDebug: Experiment = {
         // Bar fill
         if (val * BAR_MAX > 0.01) {
           rc.rectangle(barX, y + 0.02, val * BAR_MAX, 0.25, {
-            fill: val > 0.5 ? '#f44' : '#f4499', fillStyle: 'solid', stroke: 'none',
+            fill: val > 0.5 ? rose : terra, fillStyle: 'solid', stroke: 'none',
             roughness: 0.8, seed: i + 300,
           });
         }
@@ -160,7 +161,7 @@ export const blendshapeDebug: Experiment = {
 
     if (maybeActive.length > 0) {
       const startY = 1.2 + active.length * 0.35 + 0.4;
-      pxText(ctx, "\u2500\u2500 MAYBE INTERESTING \u2500\u2500", 0.5, startY, "bold 0.17px monospace", "#fa0");
+      pxText(ctx, "\u2500\u2500 MAYBE INTERESTING \u2500\u2500", 0.5, startY, "bold 0.17px monospace", honey);
 
       const LEFT = 0.5;
       const BAR_MAX = w * 0.4;
@@ -178,7 +179,7 @@ export const blendshapeDebug: Experiment = {
         });
         if (val * BAR_MAX > 0.01) {
           rc.rectangle(barX, y + 0.02, val * BAR_MAX, 0.22, {
-            fill: '#fa088', fillStyle: 'solid', stroke: 'none',
+            fill: honey, fillStyle: 'solid', stroke: 'none',
             roughness: 0.8, seed: i + 500,
           });
         }
@@ -195,7 +196,7 @@ export const blendshapeDebug: Experiment = {
 
       const maybeH = maybeActive.length > 0 ? maybeActive.length * 0.3 + 0.6 : 0;
       const startY = Math.max(1.2 + active.length * 0.35 + maybeH + 0.5, h * 0.45);
-      pxText(ctx, "\u2500\u2500 OTHER BLENDSHAPES \u2500\u2500", 0.5, startY, "bold 0.17px monospace", "#fa0");
+      pxText(ctx, "\u2500\u2500 OTHER BLENDSHAPES \u2500\u2500", 0.5, startY, "bold 0.17px monospace", honey);
 
       const ROW_H = 0.22;
       const BAR_MAX = w * 0.3;
@@ -213,7 +214,7 @@ export const blendshapeDebug: Experiment = {
         });
         if (val > 0.1) {
           rc.rectangle(2.85, y + 0.02, val * BAR_MAX, ROW_H - 0.05, {
-            fill: '#fa066', fillStyle: 'solid', stroke: 'none',
+            fill: honey, fillStyle: 'solid', stroke: 'none',
             roughness: 0.8, seed: i + 700,
           });
         }

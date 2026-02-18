@@ -1,6 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { sage, honey, rose } from '../palette';
 import type { PersonState } from './creature-shared';
 import {
   NOSE, L_EYE, R_EYE,
@@ -157,7 +158,7 @@ function calcAccuracy(player: { x: number; y: number }[], target: { x: number; y
 }
 
 function getCurrentTarget(): { x: number; y: number }[] {
-  return POSES[currentPoseIdx].build(w * 0.3);
+  return POSES[currentPoseIdx].build(w * 0.5);
 }
 
 function advancePose() {
@@ -234,7 +235,7 @@ export const yoga: Experiment = {
 
     targetPerson = {
       ...makePerson(),
-      pts: POSES[1].build(w * 0.3),
+      pts: POSES[1].build(w * 0.5),
     };
 
     // Player roughly matching pose at right side
@@ -266,7 +267,7 @@ export const yoga: Experiment = {
     ctx.restore();
 
     // Draw target label
-    pxText(ctx, "target", w * 0.3, 0.5, "bold 0.25px monospace", "rgba(255,255,255,0.4)", "center");
+    pxText(ctx, "target", w * 0.5, 0.5, "bold 0.25px monospace", "rgba(255,255,255,0.4)", "center");
 
     // Draw player(s)
     if (people.length === 0) {
@@ -289,19 +290,19 @@ export const yoga: Experiment = {
         if (acc > 0.8) {
           // Good — green ring
           rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: '#4CAF50', strokeWidth: 0.04,
+            stroke: sage, strokeWidth: 0.04,
             fill: 'none', roughness: 0.8, seed: 600 + ji,
           });
         } else if (acc > 0.4) {
           // OK — yellow ring
           rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: '#FFD93D', strokeWidth: 0.04,
+            stroke: honey, strokeWidth: 0.04,
             fill: 'none', roughness: 0.8, seed: 600 + ji,
           });
         } else {
           // Bad — red ring
           rc.circle(p[idx].x, p[idx].y, r * 2, {
-            stroke: '#F44336', strokeWidth: 0.04,
+            stroke: rose, strokeWidth: 0.04,
             fill: 'none', roughness: 0.8, seed: 600 + ji,
           });
         }
@@ -337,7 +338,7 @@ export const yoga: Experiment = {
 
       // Fill
       if (progress > 0.01) {
-        const fillColor = poseAccuracy >= ACCURACY_THRESHOLD ? '#4CAF50' : '#F44336';
+        const fillColor = poseAccuracy >= ACCURACY_THRESHOLD ? sage : rose;
         rc.rectangle(barX, barY, barW * Math.min(1, progress), barH, {
           fill: fillColor, fillStyle: 'solid', stroke: 'none',
           roughness: 0.8, seed: 701,
@@ -350,7 +351,7 @@ export const yoga: Experiment = {
     }
 
     // Accuracy readout
-    const accColor = poseAccuracy >= ACCURACY_THRESHOLD ? '#4CAF50' : poseAccuracy > 0.3 ? '#FFD93D' : '#F44336';
+    const accColor = poseAccuracy >= ACCURACY_THRESHOLD ? sage : poseAccuracy > 0.3 ? honey : rose;
     pxText(ctx, `${Math.round(poseAccuracy * 100)}%`, w - 0.3, 0.6, "bold 0.35px monospace", accColor, "right");
 
     // Poses completed

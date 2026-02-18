@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script>
+    // GitHub Pages SPA redirect: handles /face-playground without trailing slash
+    // and any deep links. Redirects to index.html with path preserved as query param.
+    var path = window.location.pathname;
+    // If accessing /face-playground without trailing slash, just add it
+    if (path === '/face-playground') {
+      window.location.replace('/face-playground/' + window.location.search + window.location.hash);
+    } else {
+      // For any other 404, redirect to root with path info
+      var query = window.location.search;
+      window.location.replace('/face-playground/' + (query ? query : ''));
+    }
+  </script>
+</head>
+<body></body>
+</html>

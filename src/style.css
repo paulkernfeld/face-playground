@@ -3,10 +3,10 @@
   --bg-gradient: linear-gradient(135deg, #FFF5EB 0%, #F0E6FF 50%, #E8F4FD 100%);
   --text: #2D2D3F;
   --text-muted: #8888A0;
-  --coral: #FF6B6B;
-  --violet: #7C5CFF;
-  --teal: #2EC4B6;
-  --yellow: #FFD93D;
+  --coral: #E09090;
+  --violet: #B8A8D0;
+  --teal: #7CC0B8;
+  --yellow: #DDB878;
   --canvas-bg: #1a1a2e;
   --font-display: 'Fredoka', sans-serif;
   --font-body: 'Sora', sans-serif;
@@ -167,6 +167,12 @@ body {
   animation: cardIn 0.5s ease-out forwards;
 }
 
+
+.experiment-card.featured {
+  grid-column: 1 / -1;
+  background: rgba(255,255,255,0.95);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+}
 
 .experiment-card:hover {
   transform: translateY(-6px);

@@ -1,6 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal } from '../palette';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -11,7 +12,6 @@ const LOWER_LIP = 14;
 const NOSE_BRIDGE = 6;
 const CHIN = 152;
 
-const SMOOTH = 0.6;
 const MOUTH_SMOOTH = 0.5;
 const MAX_SPEED_CLOSED = 16.0; // game units per second
 const MAX_SPEED_OPEN = 1.0; // game units per second (2x previous)
@@ -54,6 +54,8 @@ interface Thing {
 
 let px = 8;
 let py = 4.5;
+let cursorX = 8;  // nose cursor position (raw, mirrored)
+let cursorY = 4.5;
 let score = 0;
 let fruits: Thing[] = [];
 let skulls: Thing[] = [];
@@ -115,6 +117,8 @@ function isPowered(): boolean {
 function reset() {
   px = 8;
   py = 4.5;
+  cursorX = 8;
+  cursorY = 4.5;
   score = 0;
   alive = true;
   gameStarted = false;
@@ -171,9 +175,13 @@ export const faceChomp: Experiment = {
       const bridge = face.landmarks[NOSE_BRIDGE];
       const chin = face.landmarks[CHIN];
 
-      // Nose position for movement (already in game units)
-      const noseX = w - nose.x; // mirror
+      // Nose cursor position (mirrored, smoothed gently)
+      const noseX = w - nose.x;
       const noseY = nose.y;
+      cursorX = cursorX * 0.3 + noseX * 0.7;
+      cursorY = cursorY * 0.3 + noseY * 0.7;
+      cursorX = Math.max(0, Math.min(w, cursorX));
+      cursorY = Math.max(0, Math.min(h, cursorY));
 
       // Mouth openness: lip gap normalized by face height
       const faceH = Math.abs(chin.y - bridge.y);
@@ -187,12 +195,10 @@ export const faceChomp: Experiment = {
         else return;
       }
 
-      // Move toward nose position, speed capped by mouth state
+      // Pacman chases the cursor with max speed
       const maxSpeed = mouthOpen < 0.3 ? MAX_SPEED_CLOSED : MAX_SPEED_OPEN;
-      const targetX = Math.max(0, Math.min(w, px * SMOOTH + noseX * (1 - SMOOTH)));
-      const targetY = Math.max(0, Math.min(h, py * SMOOTH + noseY * (1 - SMOOTH)));
-      let dx = targetX - px;
-      let dy = targetY - py;
+      let dx = cursorX - px;
+      let dy = cursorY - py;
       const moveDist = Math.sqrt(dx * dx + dy * dy);
       const maxDist = maxSpeed * dt;
       if (moveDist > maxDist && moveDist > 0.0001) {
@@ -367,6 +373,8 @@ export const faceChomp: Experiment = {
   demo() {
     px = 5;
     py = 4;
+    cursorX = 6.5;
+    cursorY = 3.2;
     score = 17;
     alive = true;
     gameStarted = true;
@@ -399,12 +407,12 @@ export const faceChomp: Experiment = {
     // Fruits
     for (const f of fruits) {
       rc.circle(f.x, f.y, FRUIT_R * 2, {
-        fill: '#0f0', fillStyle: 'solid', stroke: 'none',
+        fill: sage, fillStyle: 'solid', stroke: 'none',
         roughness: 1.2, seed: f.seed,
       });
       // Stem
       rc.line(f.x, f.y - FRUIT_R, f.x + 0.05, f.y - FRUIT_R - 0.1, {
-        stroke: '#090', strokeWidth: 0.03, roughness: 1.5, seed: f.seed + 500,
+        stroke: '#6A9A70', strokeWidth: 0.03, roughness: 1.5, seed: f.seed + 500,
       });
     }
 
@@ -412,11 +420,11 @@ export const faceChomp: Experiment = {
     if (pellet) {
       const pulse = 0.8 + Math.sin(performance.now() / 150) * 0.2;
       rc.circle(pellet.x, pellet.y, PELLET_R * pulse * 2, {
-        fill: '#fff', fillStyle: 'solid', stroke: 'none',
+        fill: cream, fillStyle: 'solid', stroke: 'none',
         roughness: 1, seed: pellet.seed,
       });
       rc.circle(pellet.x, pellet.y, PELLET_R * pulse * 1.2, {
-        fill: '#ff0', fillStyle: 'solid', stroke: 'none',
+        fill: honey, fillStyle: 'solid', stroke: 'none',
         roughness: 0.8, seed: pellet.seed + 1,
       });
     }
@@ -437,11 +445,11 @@ export const faceChomp: Experiment = {
       let fillColor: string;
       if (powered) {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
-        fillColor = flash ? '#fff' : '#22f';
+        fillColor = flash ? cream : sky;
       } else if (s.guardian) {
-        fillColor = '#0c6';
+        fillColor = teal;
       } else {
-        fillColor = s.homing ? '#a0f' : '#f44';
+        fillColor = s.homing ? lavender : rose;
       }
       rc.circle(sx, sy, SKULL_R * 2, {
         fill: fillColor, fillStyle: 'solid', stroke: 'none',
@@ -449,21 +457,46 @@ export const faceChomp: Experiment = {
       });
       // Eyes
       rc.circle(sx - 0.06, sy - 0.04, 0.08, {
-        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        fill: charcoal, fillStyle: 'solid', stroke: 'none',
         roughness: 0.5, seed: s.seed + 1,
       });
       rc.circle(sx + 0.06, sy - 0.04, 0.08, {
-        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        fill: charcoal, fillStyle: 'solid', stroke: 'none',
         roughness: 0.5, seed: s.seed + 2,
       });
       // Mouth
       if (powered) {
-        rc.line(sx - 0.08, sy + 0.06, sx - 0.04, sy + 0.09, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
-        rc.line(sx - 0.04, sy + 0.09, sx, sy + 0.06, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 4 });
-        rc.line(sx, sy + 0.06, sx + 0.04, sy + 0.09, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 5 });
-        rc.line(sx + 0.04, sy + 0.09, sx + 0.08, sy + 0.06, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 6 });
+        rc.line(sx - 0.08, sy + 0.06, sx - 0.04, sy + 0.09, { stroke: charcoal, strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
+        rc.line(sx - 0.04, sy + 0.09, sx, sy + 0.06, { stroke: charcoal, strokeWidth: 0.03, roughness: 1, seed: s.seed + 4 });
+        rc.line(sx, sy + 0.06, sx + 0.04, sy + 0.09, { stroke: charcoal, strokeWidth: 0.03, roughness: 1, seed: s.seed + 5 });
+        rc.line(sx + 0.04, sy + 0.09, sx + 0.08, sy + 0.06, { stroke: charcoal, strokeWidth: 0.03, roughness: 1, seed: s.seed + 6 });
       } else {
-        rc.line(sx - 0.08, sy + 0.08, sx + 0.08, sy + 0.08, { stroke: '#000', strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
+        rc.line(sx - 0.08, sy + 0.08, sx + 0.08, sy + 0.08, { stroke: charcoal, strokeWidth: 0.03, roughness: 1, seed: s.seed + 3 });
+      }
+    }
+
+    // Nose cursor (drawn under pacman)
+    if (tracking && alive && gameStarted) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      rc.circle(cursorX, cursorY, 0.2, {
+        fill: cream, fillStyle: 'solid', stroke: 'none',
+        roughness: 0.5, seed: 5,
+      });
+      ctx.restore();
+      // Thin line from cursor to pacman when they're separated
+      const sep = dist(px, py, cursorX, cursorY);
+      if (sep > 0.3) {
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = cream;
+        ctx.lineWidth = 0.02;
+        ctx.setLineDash([0.1, 0.1]);
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(cursorX, cursorY);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -475,12 +508,12 @@ export const faceChomp: Experiment = {
       const mouthAngle = canMove ? 0.15 : 0.8;
       let playerColor: string;
       if (!tracking) {
-        playerColor = '#666';
+        playerColor = stone;
       } else if (powered) {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
-        playerColor = flash ? '#ff0' : '#4cf';
+        playerColor = flash ? honey : sky;
       } else {
-        playerColor = canMove ? '#ff0' : '#aa0';
+        playerColor = canMove ? honey : '#A89860';
       }
       // Pac-man arc
       rc.arc(cx, cy, PLAYER_R * 2, PLAYER_R * 2, mouthAngle, Math.PI * 2 - mouthAngle, true, {
@@ -489,7 +522,7 @@ export const faceChomp: Experiment = {
       });
       // Eye
       rc.circle(cx - 0.02, cy - 0.1, 0.08, {
-        fill: '#000', fillStyle: 'solid', stroke: 'none',
+        fill: charcoal, fillStyle: 'solid', stroke: 'none',
         roughness: 0.5, seed: 2,
       });
     } else {
@@ -510,7 +543,7 @@ export const faceChomp: Experiment = {
         stroke: 'none', roughness: 0.3, seed: 900,
       });
 
-      pxText(ctx, msg, hx, hy + 0.1, "bold 0.3px monospace", "#ff0", "center");
+      pxText(ctx, msg, hx, hy + 0.1, "bold 0.3px monospace", honey, "center");
     }
 
     // "Close your mouth to move faster" hint
@@ -523,7 +556,7 @@ export const faceChomp: Experiment = {
         stroke: 'none', roughness: 0.3, seed: 901,
       });
 
-      pxText(ctx, "close your mouth to move faster!", hx, hy + 0.1, "bold 0.25px monospace", "#4cf", "center");
+      pxText(ctx, "close your mouth to move faster!", hx, hy + 0.1, "bold 0.25px monospace", sky, "center");
     }
 
     // Score
@@ -531,12 +564,12 @@ export const faceChomp: Experiment = {
 
     // Pre-game prompt
     if (!gameStarted && alive) {
-      pxText(ctx, "open your mouth to start!", w / 2, h / 2 - 0.3, "bold 0.4px monospace", "#ff0", "center");
+      pxText(ctx, "open your mouth to start!", w / 2, h / 2 - 0.3, "bold 0.4px monospace", honey, "center");
     }
 
     // Death message
     if (!alive) {
-      pxText(ctx, "CHOMP'D", w / 2, h / 2 - 0.3, "bold 0.6px monospace", "#f44", "center");
+      pxText(ctx, "CHOMP'D", w / 2, h / 2 - 0.3, "bold 0.6px monospace", rose, "center");
       pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", "#fff", "center");
       if (performance.now() - deathTime > 2000) {
         pxText(ctx, "open mouth to restart", w / 2, h / 2 + 0.8, "0.22px monospace", "rgba(255,255,255,0.4)", "center");

@@ -1,6 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { teal, stone } from '../palette';
 
 // Nose tip is landmark index 1
 const NOSE_TIP = 1;
@@ -70,7 +71,7 @@ export const headCursor: Experiment = {
     for (let i = 0; i < trail.length; i++) {
       const t = i / trail.length;
       rc.circle(trail[i].x, trail[i].y, (0.05 + t * 0.15) * 2, {
-        fill: `rgba(0, 255, 100, ${t * 0.5})`,
+        fill: `rgba(124, 192, 184, ${t * 0.5})`,
         fillStyle: 'solid',
         stroke: 'none',
         roughness: 0.8,
@@ -81,7 +82,7 @@ export const headCursor: Experiment = {
     // Draw cursor
     const cx = cursorX;
     const cy = cursorY;
-    const color = tracking ? "#0f0" : "#666";
+    const color = tracking ? teal : stone;
 
     // Outer ring
     rc.circle(cx, cy, 0.44, {

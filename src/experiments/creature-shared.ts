@@ -1,5 +1,6 @@
 import type { Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
+import { CREATURE_PALETTES, SPARK_COLORS as PALETTE_SPARK_COLORS, charcoal } from '../palette';
 
 // Pose landmark indices
 export const NOSE = 0;
@@ -14,13 +15,8 @@ export const L_MOUTH = 9, R_MOUTH = 10;
 
 const SMOOTH = 0.5;
 
-// Per-person color palettes
-export const PALETTES = [
-  { body: '#FF6B6B', lArm: '#9B59B6', rArm: '#2EC4B6', lLeg: '#FFD93D', rLeg: '#FF6B6B', hat: '#FFD93D', smile: '#FF6B6B' },
-  { body: '#4FC3F7', lArm: '#FF8A65', rArm: '#81C784', lLeg: '#BA68C8', rLeg: '#4FC3F7', hat: '#FF8A65', smile: '#4FC3F7' },
-  { body: '#AED581', lArm: '#FFD54F', rArm: '#F06292', lLeg: '#4DD0E1', rLeg: '#AED581', hat: '#F06292', smile: '#AED581' },
-  { body: '#FFB74D', lArm: '#7986CB', rArm: '#4DB6AC', lLeg: '#E57373', rLeg: '#FFB74D', hat: '#7986CB', smile: '#FFB74D' },
-];
+// Re-export palette colors for consumers
+export const PALETTES = CREATURE_PALETTES;
 
 export interface PersonState {
   pts: { x: number; y: number }[];
@@ -36,7 +32,7 @@ export interface Spark {
   color: string; size: number;
 }
 
-export const SPARK_COLORS = ['#FFD93D', '#FF6B6B', '#2EC4B6', '#9B59B6', '#fff'];
+export const SPARK_COLORS = PALETTE_SPARK_COLORS;
 
 export function makePerson(): PersonState {
   return {
@@ -148,7 +144,7 @@ export function drawPerson(
   joints.forEach((j, ji) => {
     rc.circle(p[j].x, p[j].y, 0.4, {
       fill: jColors[ji], fillStyle: 'solid',
-      stroke: '#333', strokeWidth: 0.03, roughness: 1.2, seed: seedBase + 50 + ji,
+      stroke: charcoal, strokeWidth: 0.03, roughness: 1.2, seed: seedBase + 50 + ji,
     });
   });
 
@@ -163,7 +159,7 @@ export function drawPerson(
     const color = wristIdx === L_WRIST ? pal.lArm : pal.rArm;
     rc.circle(hx, hy, pulse * 2, {
       fill: color, fillStyle: 'solid',
-      stroke: '#333', strokeWidth: 0.03, roughness: 1.3, seed: seedBase + 90 + wristIdx,
+      stroke: charcoal, strokeWidth: 0.03, roughness: 1.3, seed: seedBase + 90 + wristIdx,
     });
     for (let f = 0; f < 4; f++) {
       const fAngle = -0.6 + f * 0.4 + (wristIdx === L_WRIST ? Math.PI : 0);
@@ -194,7 +190,7 @@ export function drawPerson(
     [headCx, headTopY - hatH],
   ], {
     fill: pal.hat, fillStyle: 'zigzag', fillWeight: 0.03,
-    stroke: '#333', strokeWidth: 0.04, roughness: 1.5, seed: seedBase + 80,
+    stroke: charcoal, strokeWidth: 0.04, roughness: 1.5, seed: seedBase + 80,
   });
   rc.circle(headCx, headTopY - hatH, 0.3, {
     fill: pal.body, fillStyle: 'solid', stroke: 'none', roughness: 1, seed: seedBase + 81,
@@ -220,7 +216,7 @@ function drawLimb(rc: GameRoughCanvas, p: { x: number; y: number }[], a: number,
 
 function drawGooglyEye(ctx: CanvasRenderingContext2D, rc: GameRoughCanvas, cx: number, cy: number, px: number, py: number, seed: number) {
   const eyeR = 0.35;
-  rc.circle(cx, cy, eyeR * 2, { fill: '#fff', fillStyle: 'solid', stroke: '#333', strokeWidth: 0.04, roughness: 1.2, seed });
+  rc.circle(cx, cy, eyeR * 2, { fill: '#fff', fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.04, roughness: 1.2, seed });
   rc.circle(px, py, eyeR * 0.8, { fill: '#222', fillStyle: 'solid', stroke: 'none', roughness: 0.8, seed: seed + 1 });
   ctx.fillStyle = '#fff';
   ctx.beginPath();

@@ -1,6 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { BALL_COLORS as PALETTE_BALL_COLORS, charcoal } from '../palette';
 import type { PersonState, Spark } from './creature-shared';
 import {
   SPARK_COLORS,
@@ -57,10 +58,7 @@ let balls: Ball[] = [];
 const BALL_R = 0.8;
 const BOUNCE_DIST = 1.2;
 const GRAVITY = 1.5;
-const BALL_COLORS = [
-  ['#FF6B6B', '#fff'], ['#4FC3F7', '#fff'], ['#FFD93D', '#fff'],
-  ['#AED581', '#fff'], ['#BA68C8', '#fff'], ['#FF8A65', '#fff'],
-];
+const BALL_COLORS = PALETTE_BALL_COLORS;
 let spawnTimer = 0;
 const SPAWN_INTERVAL = 6;
 const MAX_BALLS = 1;
@@ -226,7 +224,7 @@ export const bodyCreature: Experiment = {
       ctx.rotate(ball.spin);
       rc.circle(0, 0, ball.r * 2, {
         fill: ball.color1, fillStyle: 'solid',
-        stroke: '#333', strokeWidth: 0.03, roughness: 1.2, seed: ball.seed,
+        stroke: charcoal, strokeWidth: 0.03, roughness: 1.2, seed: ball.seed,
       });
       rc.line(-ball.r * 0.7, -ball.r * 0.3, ball.r * 0.7, -ball.r * 0.3, {
         stroke: ball.color2, strokeWidth: 0.08, roughness: 1, seed: ball.seed + 1,

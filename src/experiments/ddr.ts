@@ -1,6 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
+import { teal, rose, honey, charcoal } from '../palette';
 
 interface Arrow {
   // Times are in game seconds (relative to audioStartTime)
@@ -109,21 +110,23 @@ function playMiss() {
 
 function scheduleBeats() {
   const ctx = ensureAudio();
-  const horizon = ctx.currentTime + SCHEDULE_AHEAD;
+  const audioHorizon = ctx.currentTime + SCHEDULE_AHEAD;
 
-  while (beatTime(scheduledUpToBeat) < horizon) {
+  // Schedule audio kicks (short look-ahead for precise timing)
+  while (beatTime(scheduledUpToBeat) < audioHorizon) {
     const t = beatTime(scheduledUpToBeat);
     if (t >= ctx.currentTime - 0.05) {
       const accent = scheduledUpToBeat % 4 === 0;
       scheduleKick(Math.max(t, ctx.currentTime), accent);
     }
-
-    if (scheduledUpToBeat >= nextSpawnBeat) {
-      spawnArrowOnBeat(scheduledUpToBeat);
-      nextSpawnBeat = scheduledUpToBeat + 1;
-    }
-
     scheduledUpToBeat++;
+  }
+
+  // Spawn arrows TRAVEL_TIME ahead so they're visible falling from the top
+  const arrowHorizon = ctx.currentTime + TRAVEL_TIME;
+  while (beatTime(nextSpawnBeat) < arrowHorizon) {
+    spawnArrowOnBeat(nextSpawnBeat);
+    nextSpawnBeat++;
   }
 }
 
@@ -184,7 +187,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
     [0, -s],
   ], {
     fill: color, fillStyle: 'solid',
-    stroke: '#333', strokeWidth: 0.03,
+    stroke: charcoal, strokeWidth: 0.03,
     roughness: 1.2, seed,
   });
 
@@ -232,13 +235,13 @@ export const ddr: Experiment = {
           score += 100 * (1 + Math.floor(combo / 10));
           combo++;
           maxCombo = Math.max(maxCombo, combo);
-          showFeedback('HIT!', '#2EC4B6');
+          showFeedback('HIT!', teal);
           playHit();
         } else {
           arrow.hit = 'miss';
           arrow.hitTime = t;
           combo = 0;
-          showFeedback('MISS', '#FF6B6B');
+          showFeedback('MISS', rose);
           playMiss();
         }
       }
@@ -259,7 +262,7 @@ export const ddr: Experiment = {
     maxCombo = 12;
     feedbackMsg = 'HIT!';
     feedbackTime = fakeNow - 0.1;
-    feedbackColor = '#2EC4B6';
+    feedbackColor = teal;
     arrows = [
       { spawnTime: fakeNow - 6, targetTime: fakeNow + 2 },
       { spawnTime: fakeNow - 5, targetTime: fakeNow + 3 },
@@ -276,7 +279,7 @@ export const ddr: Experiment = {
     // Target line
     ctx.save();
     ctx.globalAlpha = 0.15;
-    ctx.strokeStyle = '#2EC4B6';
+    ctx.strokeStyle = teal;
     ctx.lineWidth = 0.03;
     ctx.beginPath();
     ctx.moveTo(TARGET_X - 2, TARGET_Y);
@@ -299,7 +302,7 @@ export const ddr: Experiment = {
       [-TARGET_SIZE * 0.4, TARGET_SIZE * 0.15],
       [0, -TARGET_SIZE / 2],
     ], {
-      fill: 'none', stroke: '#2EC4B6', strokeWidth: 0.03,
+      fill: 'none', stroke: teal, strokeWidth: 0.03,
       roughness: 1.5, seed: 500,
     });
     ctx.restore();
@@ -326,7 +329,7 @@ export const ddr: Experiment = {
 
       const color = arrow.hit === 'miss' ? '#555'
         : arrow.hit === 'hit' ? '#fff'
-        : '#2EC4B6';
+        : teal;
 
       const size = arrow.hit ? ARROW_SIZE * (1 + (t - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
 
@@ -338,7 +341,7 @@ export const ddr: Experiment = {
 
     // Combo (top left)
     if (combo > 1) {
-      pxText(ctx, `${combo}x combo`, 0.3, 0.6, "bold 0.3px monospace", "#FFD93D");
+      pxText(ctx, `${combo}x combo`, 0.3, 0.6, "bold 0.3px monospace", honey);
     }
 
     // Max combo (below combo)
@@ -353,6 +356,45 @@ export const ddr: Experiment = {
       ctx.globalAlpha = alpha;
       pxText(ctx, feedbackMsg, w / 2, h / 2 + yOff, "bold 0.5px Fredoka, sans-serif", feedbackColor, "center");
       ctx.globalAlpha = 1;
+    }
+
+    // Head pitch indicator (right side)
+    {
+      const indicatorX = w - 1.5;
+      const indicatorCY = TARGET_Y;
+      const barH = 3;  // half-height of the indicator range
+      // Map pitch to position: 0 = center, positive (nodding down) = below
+      const pitchY = Math.max(-barH, Math.min(barH, currentPitch * (barH / 0.6)));
+      const dotY = indicatorCY + pitchY;
+      const nodding = currentPitch > NOD_THRESH;
+
+      // Vertical guide line
+      ctx.save();
+      ctx.globalAlpha = 0.1;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.moveTo(indicatorX, indicatorCY - barH);
+      ctx.lineTo(indicatorX, indicatorCY + barH);
+      ctx.stroke();
+
+      // Threshold line
+      ctx.globalAlpha = 0.15;
+      ctx.strokeStyle = teal;
+      const threshY = indicatorCY + NOD_THRESH * (barH / 0.6);
+      ctx.beginPath();
+      ctx.moveTo(indicatorX - 0.3, threshY);
+      ctx.lineTo(indicatorX + 0.3, threshY);
+      ctx.stroke();
+      ctx.restore();
+
+      // Current pitch dot
+      const dotColor = nodding ? teal : 'rgba(255,255,255,0.5)';
+      const dotSize = nodding ? 0.35 : 0.25;
+      rc.circle(indicatorX, dotY, dotSize, {
+        fill: dotColor, fillStyle: 'solid', stroke: 'none',
+        roughness: 0.5, seed: 600,
+      });
     }
 
     // Instructions at bottom
