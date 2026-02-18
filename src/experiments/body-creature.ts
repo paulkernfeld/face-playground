@@ -43,6 +43,35 @@ interface Spark {
 }
 let sparks: Spark[] = [];
 const SPARK_COLORS = ['#FFD93D', '#FF6B6B', '#2EC4B6', '#9B59B6', '#fff'];
+const APPLE_PARTICLE_COLORS = ['#D32F2F', '#F44336', '#E53935', '#4CAF50', '#66BB6A', '#FFEB3B'];
+
+// Apple state
+const APPLE_R = 0.4;
+const GRAB_DIST = 0.9;
+let appleX = 0, appleY = 0;
+let appleAlive = false;
+let appleSeed = 200;
+
+function spawnApple() {
+  appleX = 1.5 + Math.random() * (w - 3);
+  appleY = 1.5 + Math.random() * (h - 3);
+  appleAlive = true;
+  appleSeed = 200 + Math.floor(Math.random() * 1000);
+}
+
+function explodeApple(x: number, y: number) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 5;
+    sparks.push({
+      x, y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+      life: 1, maxLife: 0.4 + Math.random() * 0.6,
+      color: APPLE_PARTICLE_COLORS[Math.floor(Math.random() * APPLE_PARTICLE_COLORS.length)],
+      size: 0.06 + Math.random() * 0.12,
+    });
+  }
+}
 
 // Beach balls
 interface Ball {
@@ -54,16 +83,16 @@ interface Ball {
   seed: number;
 }
 let balls: Ball[] = [];
-const BALL_R = 0.45;
-const BOUNCE_DIST = 0.9;
-const GRAVITY = 3;
+const BALL_R = 0.8;
+const BOUNCE_DIST = 1.2;
+const GRAVITY = 1.5;
 const BALL_COLORS = [
   ['#FF6B6B', '#fff'], ['#4FC3F7', '#fff'], ['#FFD93D', '#fff'],
   ['#AED581', '#fff'], ['#BA68C8', '#fff'], ['#FF8A65', '#fff'],
 ];
 let spawnTimer = 0;
-const SPAWN_INTERVAL = 2.5;
-const MAX_BALLS = 6;
+const SPAWN_INTERVAL = 6;
+const MAX_BALLS = 1;
 
 function mirror(landmarks: Landmarks): { x: number; y: number }[] {
   return landmarks.map(l => ({ x: w - l.x, y: l.y }));
@@ -100,7 +129,7 @@ function spawnBall() {
     x: 1 + Math.random() * (w - 2),
     y: -BALL_R,
     vx: (Math.random() - 0.5) * 2,
-    vy: 0.5 + Math.random(),
+    vy: 0.3 + Math.random() * 0.5,
     r: BALL_R,
     color1: colors[0], color2: colors[1],
     spin: 0,
@@ -118,6 +147,7 @@ export const bodyCreature: Experiment = {
     sparks = [];
     balls = [];
     spawnTimer = 0;
+    appleAlive = false;
   },
 
   update() {},
@@ -131,6 +161,9 @@ export const bodyCreature: Experiment = {
       });
     }
     if (poses.length < people.length) people.length = poses.length;
+
+    // Spawn apple if none exists
+    if (!appleAlive && poses.length > 0) spawnApple();
 
     for (let i = 0; i < poses.length; i++) {
       const pose = poses[i];
@@ -165,6 +198,17 @@ export const bodyCreature: Experiment = {
         }
       }
 
+      // Apple collision
+      if (appleAlive) {
+        for (const wristIdx of [L_WRIST, R_WRIST]) {
+          if (ptDist(p[wristIdx].x, p[wristIdx].y, appleX, appleY) < GRAB_DIST) {
+            explodeApple(appleX, appleY);
+            appleAlive = false;
+            break;
+          }
+        }
+      }
+
       // T-pose sparkles
       const shoulderY = (p[L_SHOULDER].y + p[R_SHOULDER].y) / 2;
       const lNear = Math.abs(p[L_WRIST].y - shoulderY) < 1.0;
@@ -193,8 +237,8 @@ export const bodyCreature: Experiment = {
           if (d < BOUNCE_DIST + ball.r) {
             const nx = (ball.x - p[wristIdx].x) / (d || 0.01);
             const ny = (ball.y - p[wristIdx].y) / (d || 0.01);
-            ball.vx = nx * 4 + (Math.random() - 0.5) * 2;
-            ball.vy = -3 - Math.random() * 3;
+            ball.vx = nx * 2 + (Math.random() - 0.5);
+            ball.vy = -2 - Math.random() * 1.5;
             ball.x = p[wristIdx].x + nx * (BOUNCE_DIST + ball.r);
             ball.y = p[wristIdx].y + ny * (BOUNCE_DIST + ball.r);
           }
@@ -273,6 +317,21 @@ export const bodyCreature: Experiment = {
       ctx.textAlign = 'center';
       ctx.fillText('stand back so the camera can see your body!', w / 2, h / 2);
       return;
+    }
+
+    // Apple
+    if (appleAlive) {
+      rc.circle(appleX, appleY, APPLE_R * 2, {
+        fill: '#D32F2F', fillStyle: 'solid',
+        stroke: '#B71C1C', strokeWidth: 0.04, roughness: 1.3, seed: appleSeed,
+      });
+      rc.line(appleX, appleY - APPLE_R, appleX + 0.1, appleY - APPLE_R - 0.25, {
+        stroke: '#5D4037', strokeWidth: 0.05, roughness: 1.5, seed: appleSeed + 1,
+      });
+      rc.arc(appleX + 0.1, appleY - APPLE_R - 0.15, 0.25, 0.15, 0, Math.PI, false, {
+        fill: '#4CAF50', fillStyle: 'solid',
+        stroke: '#388E3C', strokeWidth: 0.02, roughness: 1.2, seed: appleSeed + 2,
+      });
     }
 
     // Beach balls (behind people)
