@@ -354,7 +354,7 @@ async function runLoop() {
         latestFace = { landmarks: gameUnits, blendshapes, headPitch, headYaw, rawTransformMatrix: rawMatrix };
         lastFaceSeenAt = now;
         // Track nose position for warning overlay
-        lastNoseX = gameUnits[1].x;
+        lastNoseX = GAME_W - gameUnits[1].x;
         lastNoseY = gameUnits[1].y;
       } else {
         rawLandmarks = null;
