@@ -54,17 +54,9 @@ interface Experiment {
 
 - **Switch to pixel-scale coordinates**: Replace 16x9 game-unit system with pixel-scale coords (~100s-1000s). Fixes two problems at once: (1) `ctx.fillText` silently fails at sub-pixel font sizes in real browsers, (2) rough.js hardcoded offsets explode at small scales, eliminating need for `GameRoughCanvas` wrapper. All experiments + main.ts need updating. Landmarks would be delivered in pixel coords instead of game units.
 - **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math. Use `?fixture` mode + saved fixtures to verify.
-- **Server requires trailing slash**: Make dev server and deployed site work without trailing slash in URL
-- **Chomp: nose cursor z-order** — cursor should render under pacman sprite
 - **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
-- **UI: unified color scheme** across all experiments
 - **UI: evaluate screenshot button** — is it used enough to justify UI space?
-- **UI: highlight chomp in menu** — it's the most polished, make it stand out
 - **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
-- **Performance**: Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
-- **Yoga: center target pose** — target pose currently at `w * 0.3`, should be centered on screen
-- **DDR: arrows not falling from top** — arrows only appear ~1 beat ahead despite TRAVEL_TIME=8s; they should be visible falling from the top of the screen
-- **DDR: show current head state** — visual indicator of what direction the player's face is currently pointing
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - Sent to friends for feedback — waiting for responses
@@ -72,7 +64,7 @@ interface Experiment {
 ## Design Direction
 
 - Playful, sketchy — intentionally unpolished, hand-drawn feel
-- Warm colors (coral, violet, teal), Fredoka + Sora fonts
+- Warm muted colors from `src/palette.ts` (rose, sage, honey, teal, lavender, sky, terra), Fredoka + Sora fonts
 - rough.js for hand-drawn shapes — use `GameRoughCanvas` (`src/rough-scale.ts`), NOT raw `rough.canvas()`. Raw rough.js has hardcoded pixel-scale offsets that break in our 16x9 game-unit coordinate system.
 
 ## Constraints
