@@ -62,9 +62,12 @@ interface Experiment {
 - **UI: highlight chomp in menu** — it's the most polished, make it stand out
 - **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
 - **Performance**: Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
+- **Yoga: center target pose** — target pose currently at `w * 0.3`, should be centered on screen
+- **DDR: arrows not falling from top** — arrows only appear ~1 beat ahead despite TRAVEL_TIME=8s; they should be visible falling from the top of the screen
+- **DDR: show current head state** — visual indicator of what direction the player's face is currently pointing
+- **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
-- **iPad**: weird behavior when orientation-locked — test and fix
-- Send to friends for feedback
+- Sent to friends for feedback — waiting for responses
 
 ## Design Direction
 
