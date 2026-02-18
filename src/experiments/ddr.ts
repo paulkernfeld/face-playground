@@ -7,6 +7,7 @@ interface Arrow {
   // Times are in game seconds (relative to audioStartTime)
   spawnTime: number;
   targetTime: number;
+  rest: boolean; // true = no nod required, auto-passes
   hit?: 'hit' | 'miss';
   hitTime?: number;
 }
@@ -18,8 +19,8 @@ const NOD_THRESH = 0.25;
 const TRAVEL_TIME = 8;
 
 // Beat grid
-const BPM = 60;
-const BEAT_INTERVAL = 60 / BPM; // 1.0s
+const BPM = 120;
+const BEAT_INTERVAL = 60 / BPM; // 0.5s
 
 // How far ahead to schedule audio (seconds)
 const SCHEDULE_AHEAD = 0.2;
@@ -122,7 +123,7 @@ function scheduleBeats() {
     scheduledUpToBeat++;
   }
 
-  // Spawn arrows TRAVEL_TIME ahead so they're visible falling from the top
+  // Spawn arrows on every beat, but only odd beats require a nod
   const arrowHorizon = ctx.currentTime + TRAVEL_TIME;
   while (beatTime(nextSpawnBeat) < arrowHorizon) {
     spawnArrowOnBeat(nextSpawnBeat);
@@ -165,6 +166,7 @@ function spawnArrowOnBeat(beat: number) {
   arrows.push({
     spawnTime: spawnAudioTime - audioStartTime,
     targetTime: targetAudioTime - audioStartTime,
+    rest: beat % 2 !== 0, // odd beats are rest beats
   });
 }
 
@@ -224,25 +226,32 @@ export const ddr: Experiment = {
       currentPitch = face.headPitch;
     }
 
-    // Judge arrows at their target time: is head nodded down?
+    // Judge arrows at their target time
     for (const arrow of arrows) {
       if (arrow.hit) continue;
       if (t >= arrow.targetTime) {
-        const nodding = currentPitch > NOD_THRESH;
-        if (nodding) {
+        if (arrow.rest) {
+          // Rest beat — auto-pass, no feedback
           arrow.hit = 'hit';
           arrow.hitTime = t;
-          score += 100 * (1 + Math.floor(combo / 10));
-          combo++;
-          maxCombo = Math.max(maxCombo, combo);
-          showFeedback('HIT!', teal);
-          playHit();
         } else {
-          arrow.hit = 'miss';
-          arrow.hitTime = t;
-          combo = 0;
-          showFeedback('MISS', rose);
-          playMiss();
+          // Nod beat — is head nodded down?
+          const nodding = currentPitch > NOD_THRESH;
+          if (nodding) {
+            arrow.hit = 'hit';
+            arrow.hitTime = t;
+            score += 100 * (1 + Math.floor(combo / 10));
+            combo++;
+            maxCombo = Math.max(maxCombo, combo);
+            showFeedback('HIT!', teal);
+            playHit();
+          } else {
+            arrow.hit = 'miss';
+            arrow.hitTime = t;
+            combo = 0;
+            showFeedback('MISS', rose);
+            playMiss();
+          }
         }
       }
     }
@@ -264,11 +273,12 @@ export const ddr: Experiment = {
     feedbackTime = fakeNow - 0.1;
     feedbackColor = teal;
     arrows = [
-      { spawnTime: fakeNow - 6, targetTime: fakeNow + 2 },
-      { spawnTime: fakeNow - 5, targetTime: fakeNow + 3 },
-      { spawnTime: fakeNow - 4, targetTime: fakeNow + 4 },
-      { spawnTime: fakeNow - 3, targetTime: fakeNow + 5 },
-      { spawnTime: fakeNow - 8, targetTime: fakeNow - 0.05, hit: 'hit', hitTime: fakeNow - 0.1 },
+      { spawnTime: fakeNow - 6, targetTime: fakeNow + 2, rest: false },
+      { spawnTime: fakeNow - 5.5, targetTime: fakeNow + 2.5, rest: true },
+      { spawnTime: fakeNow - 5, targetTime: fakeNow + 3, rest: false },
+      { spawnTime: fakeNow - 4.5, targetTime: fakeNow + 3.5, rest: true },
+      { spawnTime: fakeNow - 4, targetTime: fakeNow + 4, rest: false },
+      { spawnTime: fakeNow - 8, targetTime: fakeNow - 0.05, rest: false, hit: 'hit', hitTime: fakeNow - 0.1 },
     ];
   },
 
@@ -307,8 +317,10 @@ export const ddr: Experiment = {
     });
     ctx.restore();
 
-    // Draw arrows in flight
+    // Draw arrows in flight (skip rest beats — they're silent checks)
     for (const arrow of arrows) {
+      if (arrow.rest) continue;
+
       const start = getStartPos();
       const progress = (t - arrow.spawnTime) / TRAVEL_TIME;
 

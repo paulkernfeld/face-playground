@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal, terra } from '../palette';
+import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal } from '../palette';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -74,6 +74,24 @@ let w = 16;
 let h = 9;
 let rc: GameRoughCanvas;
 let seedCounter = 1000;
+let audioCtx: AudioContext | null = null;
+
+function playDing() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, t);
+  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
+  gain.gain.setValueAtTime(0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
 
 function randPos(): { x: number; y: number } {
   return { x: MIN_X + Math.random() * (MAX_X - MIN_X), y: MIN_Y + Math.random() * (MAX_Y - MIN_Y) };
@@ -216,13 +234,9 @@ export const faceChomp: Experiment = {
         }
       }
 
-      // Check if far from all fruits with mouth open (hint to close mouth)
+      // Check if cursor is far from pac-man with mouth open (hint to close mouth)
       if (!nearFruitButClosed && mouthOpen > 0.3) {
-        let nearestFruitDist = Infinity;
-        for (const f of fruits) {
-          nearestFruitDist = Math.min(nearestFruitDist, dist(px, py, f.x, f.y));
-        }
-        if (nearestFruitDist > 3.0) {
+        if (dist(cursorX, cursorY, px, py) > 2.0) {
           farFromFruitAndOpen = true;
         }
       }
@@ -325,6 +339,7 @@ export const faceChomp: Experiment = {
         if (dist(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
           fruitsEaten++;
           score++;
+          playDing();
           fruits[i] = spawnFruit();
           if (fruitsEaten >= HUNTER_FIRST_AT && (fruitsEaten - HUNTER_FIRST_AT) % HUNTER_EVERY === 0) {
             skulls.push(spawnSkull(true));
@@ -513,7 +528,7 @@ export const faceChomp: Experiment = {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
         playerColor = flash ? honey : sky;
       } else {
-        playerColor = canMove ? honey : terra;
+        playerColor = honey;
       }
       // Pac-man arc
       rc.arc(cx, cy, PLAYER_R * 2, PLAYER_R * 2, mouthAngle, Math.PI * 2 - mouthAngle, true, {

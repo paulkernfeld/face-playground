@@ -78,6 +78,9 @@ interface Experiment {
 - **Warning system refactor** — chomp's "open your mouth" warning may overlap the main file's face-visibility warning. Refactor so main.ts sends errors/warnings down to experiments via `FaceData` or a callback, and experiments can optionally render them. Face-visibility warning should override game-level warnings.
 - **Chomp: smarter "close mouth" hint** — only show "close your mouth to move faster" when the nose cursor is far from the pac-man AND mouth is open (not always when mouth is open)
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
+- **Creature: thicker limbs** — limbs are too spindly/skeletal, gives a creepy look. Thicken arms and legs so creatures feel more like chunky cartoon characters
+- **Creature: fingers** — show fingers/hands instead of just wrist endpoints, even simple mitten shapes would help
+- **Creature: face shape** — draw a face outline/head shape, not just floating eyes. Round head or oval that follows the pose
 - **Experiment cleanup**: Ensure every experiment cleans up after itself (audio contexts, timers, event listeners) when returning to menu
 - Sent to friends for feedback — waiting for responses
 

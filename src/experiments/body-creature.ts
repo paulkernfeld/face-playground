@@ -54,6 +54,25 @@ interface Ball {
   spin: number;
   seed: number;
 }
+let audioCtx: AudioContext | null = null;
+
+function playDing() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, t);
+  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
+  gain.gain.setValueAtTime(0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
+
 let balls: Ball[] = [];
 const BALL_R = 0.8;
 const BOUNCE_DIST = 1.2;
@@ -108,6 +127,7 @@ export const bodyCreature: Experiment = {
         for (const wristIdx of [L_WRIST, R_WRIST]) {
           if (ptDist(p[wristIdx].x, p[wristIdx].y, appleX, appleY) < GRAB_DIST) {
             explodeApple(appleX, appleY);
+            playDing();
             appleAlive = false;
             break;
           }
