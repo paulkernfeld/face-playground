@@ -52,6 +52,10 @@ interface Experiment {
 - **Kasina**: Meditation/visual experience with light patterns or geometric visualizations
 - **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
 - **Mindful coding Claude plugin**: Face-tracking awareness layer during coding sessions
+- **Breathing rate detector**: Track chest/shoulder movement or subtle face motion to estimate breathing rate
+- **Heartbeat detector**: Use rPPG (remote photoplethysmography) — measure subtle redness/blueness changes in face skin to detect pulse (see Verkruysse et al. / Brown University research)
+- **Mindfulness**: Close your eyes and stay still for a set duration, detect via blendshapes
+- **Face yoga**: Guided facial exercises — open mouth wide, puff cheeks, raise eyebrows, etc.
 
 ## TODO
 
@@ -68,6 +72,7 @@ interface Experiment {
 - **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
 - **Chomp: apple sound** — satisfying sound effect when eating an apple
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
+- **Experiment cleanup**: Ensure every experiment cleans up after itself (audio contexts, timers, event listeners) when returning to menu
 - Sent to friends for feedback — waiting for responses
 
 ## Philosophy
