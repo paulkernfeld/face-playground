@@ -1,5 +1,6 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
+import { pxText } from '../px-text';
 import type { PersonState, Spark } from './creature-shared';
 import {
   SPARK_COLORS,
@@ -199,10 +200,7 @@ export const bodyCreature: Experiment = {
 
   draw(ctx) {
     if (people.length === 0) {
-      ctx.fillStyle = '#888';
-      ctx.font = '600 0.4px Sora, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('stand back so the camera can see your body!', w / 2, h / 2);
+      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', '#888', 'center');
       return;
     }
 

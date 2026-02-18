@@ -1,5 +1,6 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
+import { pxText } from '../px-text';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -111,22 +112,15 @@ export const blendshapeDebug: Experiment = {
     const tense = active.length > 0;
 
     // Big centered indicator with relaxation instruction
-    ctx.textAlign = "center";
     if (tense) {
       const instruction = RELAXATION_INSTRUCTIONS[active[0].name] ?? "relax";
-      ctx.font = "bold 0.45px monospace";
-      ctx.fillStyle = "#f44";
-      ctx.fillText(instruction, w / 2, h / 2);
+      pxText(ctx, instruction, w / 2, h / 2, "bold 0.45px monospace", "#f44", "center");
     } else {
-      ctx.font = "bold 0.6px monospace";
-      ctx.fillStyle = "#0f0";
-      ctx.fillText("RELAXED", w / 2, h / 2);
+      pxText(ctx, "RELAXED", w / 2, h / 2, "bold 0.6px monospace", "#0f0", "center");
     }
 
     // Active tension blendshapes
     if (active.length > 0) {
-      ctx.font = "0.22px monospace";
-      ctx.textAlign = "left";
       const LEFT = 0.5;
       const BAR_MAX = w * 0.4;
 
@@ -135,8 +129,7 @@ export const blendshapeDebug: Experiment = {
         const { name, val } = active[i];
 
         // Label
-        ctx.fillStyle = "#fff";
-        ctx.fillText(name, LEFT, y + 0.22);
+        pxText(ctx, name, LEFT, y + 0.22, "0.22px monospace", "#fff");
 
         // Bar background
         const barX = LEFT + 3.0;
@@ -153,10 +146,7 @@ export const blendshapeDebug: Experiment = {
         }
 
         // Value
-        ctx.fillStyle = "#fff";
-        ctx.font = "0.17px monospace";
-        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22);
-        ctx.font = "0.22px monospace";
+        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22, "0.17px monospace", "#fff");
       }
     }
 
@@ -170,12 +160,8 @@ export const blendshapeDebug: Experiment = {
 
     if (maybeActive.length > 0) {
       const startY = 1.2 + active.length * 0.35 + 0.4;
-      ctx.fillStyle = "#fa0";
-      ctx.font = "bold 0.17px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText("── MAYBE INTERESTING ──", 0.5, startY);
+      pxText(ctx, "\u2500\u2500 MAYBE INTERESTING \u2500\u2500", 0.5, startY, "bold 0.17px monospace", "#fa0");
 
-      ctx.font = "0.2px monospace";
       const LEFT = 0.5;
       const BAR_MAX = w * 0.4;
 
@@ -183,9 +169,7 @@ export const blendshapeDebug: Experiment = {
         const y = startY + 0.12 + i * 0.3;
         const { name, val } = maybeActive[i];
 
-        ctx.fillStyle = "#ccc";
-        ctx.textAlign = "left";
-        ctx.fillText(name, LEFT, y + 0.2);
+        pxText(ctx, name, LEFT, y + 0.2, "0.2px monospace", "#ccc");
 
         const barX = LEFT + 3.0;
         rc.rectangle(barX, y + 0.02, BAR_MAX, 0.22, {
@@ -199,10 +183,7 @@ export const blendshapeDebug: Experiment = {
           });
         }
 
-        ctx.fillStyle = "#ccc";
-        ctx.font = "0.15px monospace";
-        ctx.fillText(val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.2);
-        ctx.font = "0.2px monospace";
+        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.2, "0.15px monospace", "#ccc");
       }
     }
 
@@ -214,12 +195,8 @@ export const blendshapeDebug: Experiment = {
 
       const maybeH = maybeActive.length > 0 ? maybeActive.length * 0.3 + 0.6 : 0;
       const startY = Math.max(1.2 + active.length * 0.35 + maybeH + 0.5, h * 0.45);
-      ctx.fillStyle = "#fa0";
-      ctx.font = "bold 0.17px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText("── OTHER BLENDSHAPES ──", 0.5, startY);
+      pxText(ctx, "\u2500\u2500 OTHER BLENDSHAPES \u2500\u2500", 0.5, startY, "bold 0.17px monospace", "#fa0");
 
-      ctx.font = "0.15px monospace";
       const ROW_H = 0.22;
       const BAR_MAX = w * 0.3;
 
@@ -228,9 +205,7 @@ export const blendshapeDebug: Experiment = {
         if (y > h - 0.25) break;
         const [name, val] = all[i];
 
-        ctx.fillStyle = val > 0.01 ? "#ccc" : "#555";
-        ctx.textAlign = "right";
-        ctx.fillText(name, 2.75, y + ROW_H * 0.7);
+        pxText(ctx, name, 2.75, y + ROW_H * 0.7, "0.15px monospace", val > 0.01 ? "#ccc" : "#555", "right");
 
         rc.rectangle(2.85, y + 0.02, BAR_MAX, ROW_H - 0.05, {
           fill: 'rgba(255,255,255,0.05)', fillStyle: 'solid', stroke: 'none',
@@ -246,13 +221,9 @@ export const blendshapeDebug: Experiment = {
     }
 
     // Hint
-    ctx.fillStyle = "#555";
-    ctx.font = "0.17px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(
+    pxText(ctx,
       `[i] ${showAll ? "hide" : "show"} other blendshapes  |  ${latestBlendshapes.size} total`,
-      0.5,
-      h - 0.25
+      0.5, h - 0.25, "0.17px monospace", "#555",
     );
   },
 };

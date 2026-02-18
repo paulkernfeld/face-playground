@@ -1,5 +1,6 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
+import { pxText } from '../px-text';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -59,12 +60,14 @@ let skulls: Thing[] = [];
 let pellet: Thing | null = null;
 let pelletSpawnedAt = 0;
 let alive = true;
+let gameStarted = false;
 let tracking = false;
 let mouthOpen = 0;
 let deathTime = 0;
 let powerUntil = 0;
 let fruitsEaten = 0;
 let nearFruitButClosed = false;
+let farFromFruitAndOpen = false;
 let w = 16;
 let h = 9;
 let rc: GameRoughCanvas;
@@ -114,10 +117,12 @@ function reset() {
   py = 4.5;
   score = 0;
   alive = true;
+  gameStarted = false;
   mouthOpen = 0;
   powerUntil = 0;
   fruitsEaten = 0;
   nearFruitButClosed = false;
+  farFromFruitAndOpen = false;
   pellet = null;
   pelletSpawnedAt = 0;
   fruits = [];
@@ -137,13 +142,27 @@ export const faceChomp: Experiment = {
   },
 
   update(face: FaceData | null, dt: number) {
+    tracking = !!face;
+
     if (!alive) {
-      if (performance.now() - deathTime > 2000) reset();
+      // Track mouth even when dead so we can detect restart
+      if (face) {
+        const upper = face.landmarks[UPPER_LIP];
+        const lower = face.landmarks[LOWER_LIP];
+        const bridge = face.landmarks[NOSE_BRIDGE];
+        const chin = face.landmarks[CHIN];
+        const faceH = Math.abs(chin.y - bridge.y);
+        const lipGap = Math.abs(lower.y - upper.y);
+        const rawOpen = Math.min(1, lipGap / (faceH * MOUTH_OPEN_THRESHOLD));
+        mouthOpen = mouthOpen * MOUTH_SMOOTH + rawOpen * (1 - MOUTH_SMOOTH);
+      }
+      // Wait 2s then require mouth open to restart
+      if (performance.now() - deathTime > 2000 && mouthOpen > 0.3) reset();
       return;
     }
 
-    tracking = !!face;
     nearFruitButClosed = false;
+    farFromFruitAndOpen = false;
 
     if (face) {
       const nose = face.landmarks[NOSE_TIP];
@@ -161,6 +180,12 @@ export const faceChomp: Experiment = {
       const lipGap = Math.abs(lower.y - upper.y);
       const rawOpen = Math.min(1, lipGap / (faceH * MOUTH_OPEN_THRESHOLD));
       mouthOpen = mouthOpen * MOUTH_SMOOTH + rawOpen * (1 - MOUTH_SMOOTH);
+
+      // Wait for mouth open to start the game
+      if (!gameStarted) {
+        if (mouthOpen > 0.3) gameStarted = true;
+        else return;
+      }
 
       // Move toward nose position, speed capped by mouth state
       const maxSpeed = mouthOpen < 0.3 ? MAX_SPEED_CLOSED : MAX_SPEED_OPEN;
@@ -182,6 +207,17 @@ export const faceChomp: Experiment = {
         if (dist(px, py, f.x, f.y) < PLAYER_R + FRUIT_R && mouthOpen < 0.3) {
           nearFruitButClosed = true;
           break;
+        }
+      }
+
+      // Check if far from all fruits with mouth open (hint to close mouth)
+      if (!nearFruitButClosed && mouthOpen > 0.3) {
+        let nearestFruitDist = Infinity;
+        for (const f of fruits) {
+          nearestFruitDist = Math.min(nearestFruitDist, dist(px, py, f.x, f.y));
+        }
+        if (nearestFruitDist > 3.0) {
+          farFromFruitAndOpen = true;
         }
       }
     }
@@ -333,6 +369,7 @@ export const faceChomp: Experiment = {
     py = 4;
     score = 17;
     alive = true;
+    gameStarted = true;
     tracking = true;
     mouthOpen = 0.7; // mouth wide open
     fruitsEaten = 17;
@@ -462,41 +499,48 @@ export const faceChomp: Experiment = {
       });
     }
 
-    // "Open your mouth!" hint — keep native text
+    // "Open your mouth!" hint
     if (nearFruitButClosed && alive) {
       const msg = "open your mouth!";
-      ctx.font = "bold 0.3px monospace";
-      ctx.textAlign = "center";
-      const metrics = ctx.measureText(msg);
-      const pw = metrics.width + 0.3;
-      const ph = 0.45;
       const hx = cx;
       const hy = cy - PLAYER_R - 0.4;
 
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.beginPath();
-      ctx.roundRect(hx - pw / 2, hy - ph / 2, pw, ph, 0.08);
-      ctx.fill();
+      rc.rectangle(hx - 1.4, hy - 0.22, 2.8, 0.45, {
+        fill: 'rgba(0, 0, 0, 0.5)', fillStyle: 'solid',
+        stroke: 'none', roughness: 0.3, seed: 900,
+      });
 
-      ctx.fillStyle = "#ff0";
-      ctx.fillText(msg, hx, hy + 0.1);
+      pxText(ctx, msg, hx, hy + 0.1, "bold 0.3px monospace", "#ff0", "center");
     }
 
-    // Score — native text
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 0.35px monospace";
-    ctx.textAlign = "right";
-    ctx.fillText(`${score}`, w - 0.25, 0.5);
+    // "Close your mouth to move faster" hint
+    if (farFromFruitAndOpen && alive && !nearFruitButClosed) {
+      const hx = cx;
+      const hy = cy - PLAYER_R - 0.4;
 
-    // Death message — native text
+      rc.rectangle(hx - 2.0, hy - 0.22, 4.0, 0.45, {
+        fill: 'rgba(0, 0, 0, 0.5)', fillStyle: 'solid',
+        stroke: 'none', roughness: 0.3, seed: 901,
+      });
+
+      pxText(ctx, "close your mouth to move faster!", hx, hy + 0.1, "bold 0.25px monospace", "#4cf", "center");
+    }
+
+    // Score
+    pxText(ctx, `${score}`, w - 0.25, 0.5, "bold 0.35px monospace", "#fff", "right");
+
+    // Pre-game prompt
+    if (!gameStarted && alive) {
+      pxText(ctx, "open your mouth to start!", w / 2, h / 2 - 0.3, "bold 0.4px monospace", "#ff0", "center");
+    }
+
+    // Death message
     if (!alive) {
-      ctx.fillStyle = "#f44";
-      ctx.font = "bold 0.6px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("CHOMP'D", w / 2, h / 2);
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.font = "0.25px monospace";
-      ctx.fillText(`score: ${score}`, w / 2, h / 2 + 0.5);
+      pxText(ctx, "CHOMP'D", w / 2, h / 2 - 0.3, "bold 0.6px monospace", "#f44", "center");
+      pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", "#fff", "center");
+      if (performance.now() - deathTime > 2000) {
+        pxText(ctx, "open mouth to restart", w / 2, h / 2 + 0.8, "0.22px monospace", "rgba(255,255,255,0.4)", "center");
+      }
     }
   },
 };

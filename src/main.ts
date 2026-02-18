@@ -12,11 +12,14 @@ import { faceChomp } from "./experiments/face-chomp";
 import { blendshapeDebug } from "./experiments/blendshape-debug";
 import { bodyCreature } from "./experiments/body-creature";
 import { redLightGreenLight } from "./experiments/red-light-green-light";
+import { ddr } from "./experiments/ddr";
+import { yoga } from "./experiments/yoga";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
+import { pxText } from "./px-text";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight];
+const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight, ddr, yoga];
 
 const experimentMeta = [
   { icon: '🎯', desc: 'move a cursor with your nose', color: '#FF6B6B' },
@@ -24,6 +27,8 @@ const experimentMeta = [
   { icon: '🧘', desc: 'monitor & release facial tension', color: '#2EC4B6' },
   { icon: '🧌', desc: 'a silly creature that follows your body', color: '#9B59B6' },
   { icon: '🚦', desc: 'freeze when the light turns red!', color: '#F44336' },
+  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: '#7C5CFF' },
+  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: '#4CAF50' },
 ];
 
 // -- DOM --
@@ -33,6 +38,7 @@ const ctx = canvas.getContext("2d")!;
 const menuEl = document.getElementById("menu") as HTMLDivElement;
 const hudEl = document.getElementById("hud") as HTMLDivElement;
 const fpsEl = document.getElementById("fps") as HTMLSpanElement;
+const anglesEl = document.getElementById("angles") as HTMLSpanElement;
 const loadingEl = document.getElementById("loading") as HTMLDivElement;
 
 // -- State --
@@ -76,7 +82,7 @@ btnBar.id = "touch-bar";
 btnBar.classList.add("hidden");
 btnBar.innerHTML = `
   <button id="btn-back">&#x2190; back${key("q")}</button>
-  <button id="btn-video">video${key("v")}</button>
+  <button id="btn-debug">debug${key("v")}</button>
   <button id="btn-screenshot">screenshot${key("s")}</button>
   <button id="btn-capture" class="hidden">capture${key("space")}</button>
 `;
@@ -85,8 +91,8 @@ document.body.appendChild(btnBar);
 document.getElementById("btn-back")!.addEventListener("click", () => {
   if (currentExp) showMenu();
 });
-document.getElementById("btn-video")!.addEventListener("click", () => {
-  if (currentExp) showVideo = !showVideo;
+document.getElementById("btn-debug")!.addEventListener("click", () => {
+  if (currentExp) toggleDebug();
 });
 document.getElementById("btn-screenshot")!.addEventListener("click", () => {
   if (currentExp) {
@@ -263,7 +269,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   // Hide loading, show canvas
   loadingEl.classList.add("hidden");
   canvas.classList.remove("hidden");
-  hudEl.classList.remove("hidden");
+  hudEl.classList.toggle("hidden", !showVideo);
   btnBar.classList.remove("hidden");
   resize();
 
@@ -300,10 +306,14 @@ async function runLoop() {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
 
-    // FPS
+    // FPS + debug info
     frameCount++;
     if (frameCount % 30 === 0) {
       fpsEl.textContent = `${Math.round(1 / dt)} fps`;
+      const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
+      anglesEl.textContent = latestFace
+        ? ` pitch ${deg(headPitch)}\u00b0 yaw ${deg(headYaw)}\u00b0`
+        : '';
     }
 
     // Detect face landmarks + blendshapes
@@ -352,12 +362,13 @@ async function runLoop() {
     }
 
     // Detect pose landmarks (only if current experiment uses them)
+    // No remap — body tracking needs the full camera frame (remap crops 5% margin)
     if (currentExp.updatePose && poseLandmarker && video.readyState >= 2) {
       const poseResult = poseLandmarker.detectForVideo(video, now);
       const allPoses = poseResult.landmarks.map(rawPose =>
         rawPose.map(l => ({
-          x: remap(l.x) * GAME_W,
-          y: remap(l.y) * GAME_H,
+          x: l.x * GAME_W,
+          y: l.y * GAME_H,
           z: l.z,
         }))
       );
@@ -431,23 +442,21 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   const tx = Math.max(1.5, Math.min(GAME_W - 1.5, lastNoseX));
   const ty = Math.max(0.8, lastNoseY - 0.6);
 
-  ctx.font = "600 0.28px Sora, sans-serif";
-  ctx.textAlign = "center";
-  const metrics = ctx.measureText(msg);
-  const pw = metrics.width + 0.35;
-  const ph = 0.45;
-
   // Sketchy background pill
   if (rc) {
-    rc.rectangle(tx - pw / 2, ty - ph / 2 - 0.08, pw, ph, {
+    rc.rectangle(tx - 1.6, ty - 0.3, 3.2, 0.45, {
       fill: 'rgba(15, 15, 35, 0.7)', fillStyle: 'solid',
       stroke: '#FFD93D', strokeWidth: 0.02,
       roughness: 1.2, seed: 900,
     });
   }
 
-  ctx.fillStyle = "#FFD93D";
-  ctx.fillText(msg, tx, ty + 0.08);
+  pxText(ctx, msg, tx, ty + 0.08, "600 0.28px Sora, sans-serif", "#FFD93D", "center");
+}
+
+function toggleDebug() {
+  showVideo = !showVideo;
+  hudEl.classList.toggle("hidden", !showVideo);
 }
 
 // -- Keyboard handler --
@@ -465,9 +474,9 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Toggle video feed
+  // Toggle debug overlay
   if (e.key === "v" && currentExp) {
-    showVideo = !showVideo;
+    toggleDebug();
     return;
   }
 

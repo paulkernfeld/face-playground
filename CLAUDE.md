@@ -44,10 +44,8 @@ interface Experiment {
 - **Gradual movement ramp-up**: Start from stillness, progressively increase allowed movement range — practice controlled transitions from rest to activity
 - **Distraction gaze test**: Place visual distractors on screen, use iris/gaze tracking to detect when eyes get pulled to them — train focus control
 - **Kasina**: Meditation/visual experience with light patterns or geometric visualizations
-- **DDR (Dance Dance Revolution)**: Rhythm game — move head to match arrow targets timed to music
 - **Posture tracking**: Detect and provide feedback on body posture (head tilt, forward lean, etc.)
 - **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
-- **Stretching/tai chi**: Movement guidance or pose matching for stretching exercises
 - **Mindful coding Claude plugin**: Face-tracking awareness layer during coding sessions
 
 ## TODO
@@ -56,17 +54,13 @@ interface Experiment {
 - **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math. Use `?fixture` mode + saved fixtures to verify.
 - **Server requires trailing slash**: Make dev server and deployed site work without trailing slash in URL
 - **Chomp: nose cursor z-order** — cursor should render under pacman sprite
-- **Chomp: game start/end flow** — keep score on screen until user interacts, then start new game; wait for user interaction before beginning (don't auto-start)
-- **Chomp: hint text** — add hint about closing mouth to move when pacman is far from nose
 - **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
-- **UI: rename "video" to "debug"** — make it a clear toggle
-- **UI: bundle dev info into debug mode** — FPS display, pitch/yaw readout (hide from normal view)
 - **UI: unified color scheme** across all experiments
 - **UI: evaluate screenshot button** — is it used enough to justify UI space?
 - **UI: highlight chomp in menu** — it's the most polished, make it stand out
 - **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
 - **Performance**: Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
-- **Text not rendering** — `ctx.fillText` at sub-pixel font sizes (e.g. 0.3px in game units) silently fails in real browsers. Fix: use `pxText()` helper (see `fixture.ts`) to convert to pixel coords before drawing text. This likely affects all experiments using fillText in game-unit space.
+- **Text not rendering** — mostly fixed via `pxText()` migration across all experiments. Remaining: `ctx.fillText` in `angle-test.ts` (pixel-scale already, fine as-is).
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - **iPad**: weird behavior when orientation-locked — test and fix
 - Send to friends for feedback
@@ -89,6 +83,7 @@ interface Experiment {
 - Node 21.7.2 (engine warnings are expected and harmless)
 - Camera resolution intentionally 640x480 — FaceMesh downscales internally, lower res improves FPS
 - **No multi-line bash scripts** — keep each Bash tool call to a single simple command. Don't chain with `&&`, don't use `sleep`, don't combine background processes with waits. If commands need to run sequentially, use separate Bash calls.
+- **Dev server for screenshots** — use `npm run dev -- --port 5199` (not `npx vite`) to start the dev server in background. `npm run dev` is allowlisted; raw `npx vite` is not.
 - **No `git -C`** — use `cd` to switch directories instead. `git -C` triggers extra approval prompts.
 - **`verbatimModuleSyntax` enabled** — use `import type { Foo }` for type-only imports, or `tsc` will error
 - **No `ctx.fillText` in game-unit space** — sub-pixel font sizes (anything under ~1px) silently fail. Use `console.log` for debug output, or `pxText()` helper for user-facing text. See TODO for planned pixel-coord fix.
