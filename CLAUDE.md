@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas overlay. Browser-only, Vite + TypeScript, no frameworks.
 
-**Core loop** (`src/main.ts`): Menu → select experiment → init webcam + FaceMesh → async render loop. Press `q` to return to menu, `v` to toggle video feed, `s` for screenshot. Touch button bar provides the same controls on mobile.
+**Core loop** (`src/main.ts`): Menu → select experiment → init webcam + FaceMesh → async render loop. Press `q` to return to menu, `v` to toggle debug overlay (video feed + FPS + pitch/yaw), `s` for screenshot. Touch button bar provides the same controls on mobile.
 
 **Coordinate system**: Experiments work in a fixed-aspect game-unit space (not pixels). `main.ts` handles letterboxing, landmark remapping/scaling, and head pose extraction — experiments just receive `FaceData` in game units.
 
@@ -36,6 +36,8 @@ interface Experiment {
 **Adding an experiment**: Create a file in `src/experiments/`, export an `Experiment` object, import it in `main.ts`, and add it to the `experiments` array. It gets a menu entry automatically.
 
 **Shared body creature rendering** (`src/experiments/creature-shared.ts`): Extracted `PersonState`, `drawPerson()`, `updatePeople()`, pupil physics, sparks, palettes, and landmark constants. Body-tracking experiments should import from here rather than duplicating creature rendering code.
+
+**DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter).
 
 **Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. Coordinates are mirrored (x inverted) so moving right moves cursor right.
 
@@ -60,7 +62,6 @@ interface Experiment {
 - **UI: highlight chomp in menu** — it's the most polished, make it stand out
 - **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
 - **Performance**: Preload FaceMesh model before camera permissions (`getUserMedia`) — partial boot to reduce perceived startup time
-- **Text not rendering** — mostly fixed via `pxText()` migration across all experiments. Remaining: `ctx.fillText` in `angle-test.ts` (pixel-scale already, fine as-is).
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - **iPad**: weird behavior when orientation-locked — test and fix
 - Send to friends for feedback
