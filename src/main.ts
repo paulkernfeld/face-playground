@@ -116,6 +116,7 @@ document.getElementById("btn-capture")!.addEventListener("click", () => {
 
 // -- Build menu --
 function showMenu() {
+  currentExp?.cleanup?.();
   currentExp = null;
   latestFace = null;
 

@@ -25,4 +25,6 @@ export interface Experiment {
   updatePose?(poses: Landmarks[], dt: number): void;
   /** Set up a representative scene for screenshots — no camera needed. */
   demo?(): void;
+  /** Called when leaving the experiment (e.g. back to menu). Stop audio, timers, etc. */
+  cleanup?(): void;
 }

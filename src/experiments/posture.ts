@@ -1,33 +1,35 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, rose, honey, stone, cream, lavender } from '../palette';
+import { sage, rose, honey, stone, cream, sky } from '../palette';
 
-// Landmark indices
-const NOSE_TIP = 1;
+// Landmark 10 = top of forehead (stable under pitch changes, unlike nose tip)
+const FOREHEAD = 10;
 
 // Posture state
 let calibrated = false;
-let calibratingCountdown = 0; // seconds remaining in calibration hold
-const CALIBRATE_HOLD = 1.5; // how long to hold the gesture
-let baselineNoseY = 0;
+let calibratingCountdown = 0;
+const CALIBRATE_HOLD = 1.5;
+let baselineForeheadY = 0;
 let baselinePitch = 0;
 
 // Current smoothed values
-let smoothNoseY = 4.5;
+let smoothForeheadY = 4.5;
 let smoothPitch = 0;
 const SMOOTH = 0.85;
 
-// Drift detection
-const DRIFT_THRESHOLD = 0.4; // game units of nose drop
+// Separate drift signals
+const Y_THRESHOLD = 0.4;     // game units of forehead drop
 const PITCH_THRESHOLD = 0.15; // radians of forward tilt
-let driftAmount = 0; // 0..1, how far off posture is
+let yDriftNorm = 0;   // 0..1, how far head has sunk
+let pitchDriftNorm = 0; // 0..1, how far head has tilted
 
-// Audio
+// Audio — two oscillators at different pitches
 let audioCtx: AudioContext | null = null;
-let toneActive = false;
-let gainNode: GainNode | null = null;
-let oscNode: OscillatorNode | null = null;
+let yGain: GainNode | null = null;
+let pitchGain: GainNode | null = null;
+let yOsc: OscillatorNode | null = null;
+let pitchOsc: OscillatorNode | null = null;
 
 // Visual state
 let w = 16;
@@ -48,21 +50,46 @@ function eyesClosed(face: FaceData): boolean {
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx = new AudioContext();
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
-  gainNode.connect(audioCtx.destination);
-  oscNode = audioCtx.createOscillator();
-  oscNode.type = "sine";
-  oscNode.frequency.value = 320; // gentle mid-range tone
-  oscNode.connect(gainNode);
-  oscNode.start();
+
+  // Low tone for sinking/slouching
+  yGain = audioCtx.createGain();
+  yGain.gain.value = 0;
+  yGain.connect(audioCtx.destination);
+  yOsc = audioCtx.createOscillator();
+  yOsc.type = "sine";
+  yOsc.frequency.value = 240;
+  yOsc.connect(yGain);
+  yOsc.start();
+
+  // Higher tone for forward tilt
+  pitchGain = audioCtx.createGain();
+  pitchGain.gain.value = 0;
+  pitchGain.connect(audioCtx.destination);
+  pitchOsc = audioCtx.createOscillator();
+  pitchOsc.type = "sine";
+  pitchOsc.frequency.value = 380;
+  pitchOsc.connect(pitchGain);
+  pitchOsc.start();
 }
 
-function setTone(on: boolean, intensity: number) {
-  if (!audioCtx || !gainNode) return;
-  const target = on ? 0.06 * intensity : 0;
-  gainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.3);
-  toneActive = on;
+function stopAudio() {
+  if (!audioCtx) return;
+  yOsc?.stop();
+  pitchOsc?.stop();
+  audioCtx.close();
+  audioCtx = null;
+  yGain = null;
+  pitchGain = null;
+  yOsc = null;
+  pitchOsc = null;
+}
+
+function setTones(yAmount: number, pitchAmount: number) {
+  if (!audioCtx) return;
+  const yTarget = yAmount > 0.3 ? 0.15 * yAmount : 0;
+  const pTarget = pitchAmount > 0.3 ? 0.15 * pitchAmount : 0;
+  yGain!.gain.setTargetAtTime(yTarget, audioCtx.currentTime, 0.3);
+  pitchGain!.gain.setTargetAtTime(pTarget, audioCtx.currentTime, 0.3);
 }
 
 export const posture: Experiment = {
@@ -73,34 +100,37 @@ export const posture: Experiment = {
     h = hh;
     calibrated = false;
     calibratingCountdown = 0;
-    smoothNoseY = h / 2;
+    smoothForeheadY = h / 2;
     smoothPitch = 0;
-    driftAmount = 0;
+    yDriftNorm = 0;
+    pitchDriftNorm = 0;
     time = 0;
     rc = new GameRoughCanvas(ctx.canvas);
-    // Audio is created on first face detection (needs user gesture)
+  },
+
+  cleanup() {
+    stopAudio();
   },
 
   update(face: FaceData | null, dt: number) {
     time += dt;
 
     if (!face) {
-      setTone(false, 0);
+      setTones(0, 0);
       return;
     }
 
     ensureAudio();
 
-    const noseY = face.landmarks[NOSE_TIP].y;
-    smoothNoseY = smoothNoseY * SMOOTH + noseY * (1 - SMOOTH);
+    const foreheadY = face.landmarks[FOREHEAD].y;
+    smoothForeheadY = smoothForeheadY * SMOOTH + foreheadY * (1 - SMOOTH);
     smoothPitch = smoothPitch * SMOOTH + face.headPitch * (1 - SMOOTH);
 
     if (!calibrated) {
-      // Check for calibration gesture: mouth open + eyes closed
-      if (mouthOpen(face) && eyesClosed(face)) {
+      if (mouthOpen(face)) {
         calibratingCountdown += dt;
         if (calibratingCountdown >= CALIBRATE_HOLD) {
-          baselineNoseY = smoothNoseY;
+          baselineForeheadY = smoothForeheadY;
           baselinePitch = smoothPitch;
           calibrated = true;
           calibratingCountdown = 0;
@@ -108,43 +138,37 @@ export const posture: Experiment = {
       } else {
         calibratingCountdown = Math.max(0, calibratingCountdown - dt * 2);
       }
-      setTone(false, 0);
+      setTones(0, 0);
       return;
     }
 
-    // Measure drift from baseline
-    const yDrift = (smoothNoseY - baselineNoseY) / DRIFT_THRESHOLD;
-    const pitchDrift = (smoothPitch - baselinePitch) / PITCH_THRESHOLD;
-    // Only care about downward/forward drift (positive values)
-    const rawDrift = Math.max(0, Math.max(yDrift, pitchDrift));
-    driftAmount = Math.min(1, rawDrift);
+    // Separate drift signals (only care about downward/forward)
+    yDriftNorm = Math.min(1, Math.max(0, (smoothForeheadY - baselineForeheadY) / Y_THRESHOLD));
+    pitchDriftNorm = Math.min(1, Math.max(0, (smoothPitch - baselinePitch) / PITCH_THRESHOLD));
 
-    if (driftAmount > 0.3) {
-      setTone(true, driftAmount);
-    } else {
-      setTone(false, 0);
-    }
+    setTones(yDriftNorm, pitchDriftNorm);
   },
 
   demo() {
     calibrated = true;
-    driftAmount = 0.15;
-    smoothNoseY = 4.5;
-    smoothPitch = 0;
+    baselineForeheadY = 4.0;
+    baselinePitch = 0;
+    smoothForeheadY = 4.35;
+    smoothPitch = 0.12;
+    yDriftNorm = 0.45;
+    pitchDriftNorm = 0.55;
     time = 3;
   },
 
   draw(ctx, _w, _h) {
     if (!calibrated) {
-      // Calibration instructions
       const pulse = 0.5 + 0.5 * Math.sin(time * 2);
 
       pxText(ctx, "posture check", w / 2, h * 0.3, "600 0.5px Fredoka, sans-serif", cream, "center");
       pxText(ctx, "sit up straight, then", w / 2, h * 0.45, "0.25px Sora, sans-serif", stone, "center");
-      pxText(ctx, "open mouth + close eyes", w / 2, h * 0.55, "600 0.28px Sora, sans-serif", honey, "center");
+      pxText(ctx, "open your mouth", w / 2, h * 0.55, "600 0.28px Sora, sans-serif", honey, "center");
       pxText(ctx, "to set your baseline", w / 2, h * 0.65, "0.25px Sora, sans-serif", stone, "center");
 
-      // Progress indicator
       if (calibratingCountdown > 0) {
         const progress = calibratingCountdown / CALIBRATE_HOLD;
         const barW = 3;
@@ -158,61 +182,78 @@ export const posture: Experiment = {
           fill: sage, fillStyle: 'solid', stroke: 'none', roughness: 0.5, seed: 201,
         });
       } else {
-        // Gentle pulsing hint
         const alpha = 0.3 + 0.3 * pulse;
-        pxText(ctx, "😮😑", w / 2, h * 0.78, `0.4px sans-serif`, `rgba(255,255,255,${alpha})`, "center");
+        pxText(ctx, "\u{1F62E}", w / 2, h * 0.78, `0.4px sans-serif`, `rgba(255,255,255,${alpha})`, "center");
       }
       return;
     }
 
-    // Calibrated — show posture status
+    // --- Calibrated: side-view head comparison ---
     const cx = w / 2;
     const cy = h / 2;
 
-    // Status indicator — a gentle arc/circle
-    const good = driftAmount < 0.3;
-    const color = good ? sage : (driftAmount > 0.6 ? rose : honey);
-    const radius = 1.2;
+    const headR = 0.8;
+    const noseLen = 0.6;
+    const neckLen = 0.7;
+    // Amplify for visibility
+    const visualYShift = (smoothForeheadY - baselineForeheadY) * 3;
+    const visualPitchShift = (smoothPitch - baselinePitch) * 3;
 
-    // Outer ring
-    rc.circle(cx, cy, radius * 2, {
-      stroke: color, strokeWidth: 0.04, fill: 'none', roughness: 1.2, seed: 300,
-    });
-
-    // Inner fill based on goodness
-    if (good) {
-      rc.circle(cx, cy, 0.3, {
-        fill: sage, fillStyle: 'solid', stroke: 'none', roughness: 0.6, seed: 301,
+    const drawHead = (hx: number, hy: number, angle: number, strokeColor: string, sw: number, seedBase: number) => {
+      rc.circle(hx, hy, headR * 2, {
+        stroke: strokeColor, strokeWidth: sw, fill: 'none', roughness: 1.0, seed: seedBase,
       });
-    }
-
-    // Drift meter — small arc showing how far off
-    if (driftAmount > 0.05) {
-      const meterY = cy + radius + 0.5;
-      const meterW = 2.5;
-      const meterH = 0.12;
-      const mx = cx - meterW / 2;
-      rc.rectangle(mx, meterY, meterW, meterH, {
-        stroke: stone, strokeWidth: 0.015, roughness: 0.6, fill: 'none', seed: 310,
+      // Nose — facing left, pitch tilts it down
+      const noseAngle = Math.PI - angle; // subtract so forward lean tilts nose down
+      const nx = hx + Math.cos(noseAngle) * (headR + noseLen);
+      const ny = hy + Math.sin(noseAngle) * (headR + noseLen);
+      const nbaseX = hx + Math.cos(noseAngle) * headR * 0.7;
+      const nbaseY = hy + Math.sin(noseAngle) * headR * 0.7;
+      rc.line(nbaseX, nbaseY, nx, ny, {
+        stroke: strokeColor, strokeWidth: sw, roughness: 0.8, seed: seedBase + 1,
       });
-      rc.rectangle(mx, meterY, meterW * driftAmount, meterH, {
-        fill: color, fillStyle: 'solid', stroke: 'none', roughness: 0.4, seed: 311,
+      // Neck
+      const neckAngle = Math.PI / 2 + angle * 0.5;
+      rc.line(hx, hy + headR, hx + Math.cos(neckAngle) * neckLen * 0.3, hy + headR + neckLen, {
+        stroke: strokeColor, strokeWidth: sw, roughness: 0.8, seed: seedBase + 2,
       });
-    }
-
-    // Status text
-    const msg = good ? "good posture" : (driftAmount > 0.6 ? "sit up!" : "drifting...");
-    pxText(ctx, msg, cx, cy - radius - 0.3, "600 0.3px Sora, sans-serif", color, "center");
-
-    // Subtle breathing circle when posture is good
-    if (good) {
-      const breath = 0.8 + 0.2 * Math.sin(time * 0.8);
-      rc.circle(cx, cy, radius * breath * 2, {
-        stroke: `rgba(140, 192, 160, 0.2)`, strokeWidth: 0.02, fill: 'none', roughness: 1.5, seed: 320,
+      // Eye
+      const eyeAngle = Math.PI - angle - 0.4;
+      const ex = hx + Math.cos(eyeAngle) * headR * 0.45;
+      const ey = hy + Math.sin(eyeAngle) * headR * 0.45;
+      rc.circle(ex, ey, 0.12, {
+        fill: strokeColor, fillStyle: 'solid', stroke: 'none', roughness: 0.4, seed: seedBase + 3,
       });
+    };
+
+    // Baseline (ghost)
+    drawHead(cx, cy, 0, stone, 0.025, 400);
+
+    // Current (solid) — shifted down and tilted
+    const yColor = yDriftNorm > 0.6 ? rose : (yDriftNorm > 0.3 ? honey : sage);
+    const pColor = pitchDriftNorm > 0.6 ? rose : (pitchDriftNorm > 0.3 ? sky : sage);
+    const mainColor = (yDriftNorm > pitchDriftNorm) ? yColor : pColor;
+    drawHead(cx, cy + visualYShift, visualPitchShift, mainColor, 0.04, 420);
+
+    // --- Status messages for each signal ---
+    const msgY = yDriftNorm > 0.6 ? "sinking" : (yDriftNorm > 0.3 ? "slouching..." : "");
+    const msgP = pitchDriftNorm > 0.6 ? "leaning forward" : (pitchDriftNorm > 0.3 ? "tilting..." : "");
+    const bothGood = yDriftNorm < 0.3 && pitchDriftNorm < 0.3;
+
+    if (bothGood) {
+      pxText(ctx, "good posture", cx, cy - headR - 0.8, "600 0.35px Sora, sans-serif", sage, "center");
+    } else {
+      let ty = cy - headR - 0.8;
+      if (msgY) {
+        pxText(ctx, msgY, cx, ty, "600 0.28px Sora, sans-serif", yColor, "center");
+        ty += 0.4;
+      }
+      if (msgP) {
+        pxText(ctx, msgP, cx, ty, "600 0.28px Sora, sans-serif", pColor, "center");
+      }
     }
 
     // Recalibrate hint
-    pxText(ctx, "recalibrate: 😮😑", cx, h - 0.5, "0.18px Sora, sans-serif", stone, "center");
+    pxText(ctx, "recalibrate: \u{1F62E}", cx, h - 0.5, "0.18px Sora, sans-serif", stone, "center");
   },
 };
