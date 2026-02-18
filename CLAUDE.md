@@ -35,12 +35,13 @@ interface Experiment {
 
 **Adding an experiment**: Create a file in `src/experiments/`, export an `Experiment` object, import it in `main.ts`, and add it to the `experiments` array. It gets a menu entry automatically.
 
+**Shared body creature rendering** (`src/experiments/creature-shared.ts`): Extracted `PersonState`, `drawPerson()`, `updatePeople()`, pupil physics, sparks, palettes, and landmark constants. Body-tracking experiments should import from here rather than duplicating creature rendering code.
+
 **Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. Coordinates are mirrored (x inverted) so moving right moves cursor right.
 
 ## Experiment ideas
 
 - **Gradual movement ramp-up**: Start from stillness, progressively increase allowed movement range — practice controlled transitions from rest to activity
-- **Red light green light**: Freeze body position on red, move on green — uses landmark delta detection to catch movement during freeze phases
 - **Distraction gaze test**: Place visual distractors on screen, use iris/gaze tracking to detect when eyes get pulled to them — train focus control
 - **Kasina**: Meditation/visual experience with light patterns or geometric visualizations
 - **DDR (Dance Dance Revolution)**: Rhythm game — move head to match arrow targets timed to music
@@ -89,3 +90,6 @@ interface Experiment {
 - Camera resolution intentionally 640x480 — FaceMesh downscales internally, lower res improves FPS
 - **No multi-line bash scripts** — keep each Bash tool call to a single simple command. Don't chain with `&&`, don't use `sleep`, don't combine background processes with waits. If commands need to run sequentially, use separate Bash calls.
 - **No `git -C`** — use `cd` to switch directories instead. `git -C` triggers extra approval prompts.
+- **`verbatimModuleSyntax` enabled** — use `import type { Foo }` for type-only imports, or `tsc` will error
+- **No `ctx.fillText` in game-unit space** — sub-pixel font sizes (anything under ~1px) silently fail. Use `console.log` for debug output, or `pxText()` helper for user-facing text. See TODO for planned pixel-coord fix.
+- **Playwright screenshots** — save to `.screenshots/` directory (gitignored), e.g. `filename: ".screenshots/demo.png"`
