@@ -421,7 +421,7 @@ async function runLoop() {
 
     // Update + draw experiment in game-unit space
     currentExp.update(latestFace, dt);
-    currentExp.draw(ctx, GAME_W, GAME_H);
+    currentExp.draw(ctx, GAME_W, GAME_H, showVideo);
 
     // Face angle warnings (all experiments)
     drawAngleWarnings(ctx, now);
@@ -523,7 +523,7 @@ if (angleTestParam !== null) {
     ctx.beginPath();
     ctx.rect(0, 0, GAME_W, GAME_H);
     ctx.clip();
-    currentExp.draw(ctx, GAME_W, GAME_H);
+    currentExp.draw(ctx, GAME_W, GAME_H, false);
     ctx.restore();
   } else {
     showMenu();

@@ -20,7 +20,7 @@ export interface Experiment {
   name: string;
   setup(ctx: CanvasRenderingContext2D, w: number, h: number): void;
   update(face: FaceData | null, dt: number): void;
-  draw(ctx: CanvasRenderingContext2D, w: number, h: number): void;
+  draw(ctx: CanvasRenderingContext2D, w: number, h: number, debug?: boolean): void;
   /** Receive body pose landmarks (33 points per person). Only called if implemented — no overhead otherwise. */
   updatePose?(poses: Landmarks[], dt: number): void;
   /** Set up a representative scene for screenshots — no camera needed. */

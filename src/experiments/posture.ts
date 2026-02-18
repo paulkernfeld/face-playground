@@ -3,24 +3,25 @@ import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 import { sage, rose, honey, stone, cream, sky } from '../palette';
 
-// Landmark 10 = top of forehead (stable under pitch changes, unlike nose tip)
-const FOREHEAD = 10;
-
 // Posture state
 let calibrated = false;
 let calibratingCountdown = 0;
 const CALIBRATE_HOLD = 1.5;
-let baselineForeheadY = 0;
+let baselineMatY = 0;   // rawTransformMatrix[13] baseline
 let baselinePitch = 0;
 
 // Current smoothed values
-let smoothForeheadY = 4.5;
+let smoothMatX = 0;      // smoothed m[12] from transform matrix
+let smoothMatY = 0;      // smoothed m[13]
+let smoothMatZ = 0;      // smoothed m[14]
 let smoothPitch = 0;
 const SMOOTH = 0.85;
 
 // Separate drift signals
-const Y_THRESHOLD = 0.4;     // game units of forehead drop
-const PITCH_THRESHOLD = 0.15; // radians of forward tilt
+// m[13] is in cm-ish units; ~3cm of head drop = full slouch
+const Y_THRESHOLD = 3.0;
+const PITCH_DEADZONE = 0.17; // ~10° of pitch ignored before drift starts
+const PITCH_THRESHOLD = 0.15; // radians of forward tilt beyond dead zone
 let yDriftNorm = 0;   // 0..1, how far head has sunk
 let pitchDriftNorm = 0; // 0..1, how far head has tilted
 
@@ -100,7 +101,9 @@ export const posture: Experiment = {
     h = hh;
     calibrated = false;
     calibratingCountdown = 0;
-    smoothForeheadY = h / 2;
+    smoothMatX = 0;
+    smoothMatY = 0;
+    smoothMatZ = 0;
     smoothPitch = 0;
     yDriftNorm = 0;
     pitchDriftNorm = 0;
@@ -122,15 +125,21 @@ export const posture: Experiment = {
 
     ensureAudio();
 
-    const foreheadY = face.landmarks[FOREHEAD].y;
-    smoothForeheadY = smoothForeheadY * SMOOTH + foreheadY * (1 - SMOOTH);
+    // Track all three translation components from the transformation matrix
+    const m = face.rawTransformMatrix;
+    const matX = m ? m[12] : 0;
+    const matY = m ? m[13] : 0;
+    const matZ = m ? m[14] : 0;
+    smoothMatX = smoothMatX * SMOOTH + matX * (1 - SMOOTH);
+    smoothMatY = smoothMatY * SMOOTH + matY * (1 - SMOOTH);
+    smoothMatZ = smoothMatZ * SMOOTH + matZ * (1 - SMOOTH);
     smoothPitch = smoothPitch * SMOOTH + face.headPitch * (1 - SMOOTH);
 
     if (!calibrated) {
       if (mouthOpen(face)) {
         calibratingCountdown += dt;
         if (calibratingCountdown >= CALIBRATE_HOLD) {
-          baselineForeheadY = smoothForeheadY;
+          baselineMatY = smoothMatY;
           baselinePitch = smoothPitch;
           calibrated = true;
           calibratingCountdown = 0;
@@ -142,25 +151,27 @@ export const posture: Experiment = {
       return;
     }
 
-    // Separate drift signals (only care about downward/forward)
-    yDriftNorm = Math.min(1, Math.max(0, (smoothForeheadY - baselineForeheadY) / Y_THRESHOLD));
-    pitchDriftNorm = Math.min(1, Math.max(0, (smoothPitch - baselinePitch) / PITCH_THRESHOLD));
+    // Separate drift signals
+    // m[13] decreases as head sinks in camera space, so negative delta = slouching
+    yDriftNorm = Math.min(1, Math.max(0, (baselineMatY - smoothMatY) / Y_THRESHOLD));
+    const rawPitchDrift = smoothPitch - baselinePitch - PITCH_DEADZONE;
+    pitchDriftNorm = Math.min(1, Math.max(0, rawPitchDrift / PITCH_THRESHOLD));
 
     setTones(yDriftNorm, pitchDriftNorm);
   },
 
   demo() {
     calibrated = true;
-    baselineForeheadY = 4.0;
+    baselineMatY = 0;
     baselinePitch = 0;
-    smoothForeheadY = 4.35;
+    smoothMatY = 1.35;  // ~45% of Y_THRESHOLD
     smoothPitch = 0.12;
     yDriftNorm = 0.45;
     pitchDriftNorm = 0.55;
     time = 3;
   },
 
-  draw(ctx, _w, _h) {
+  draw(ctx, _w, _h, debug) {
     if (!calibrated) {
       const pulse = 0.5 + 0.5 * Math.sin(time * 2);
 
@@ -195,8 +206,8 @@ export const posture: Experiment = {
     const headR = 0.8;
     const noseLen = 0.6;
     const neckLen = 0.7;
-    // Amplify for visibility
-    const visualYShift = (smoothForeheadY - baselineForeheadY) * 3;
+    // Amplify for visibility — scale matrix Y delta into game units
+    const visualYShift = ((baselineMatY - smoothMatY) / Y_THRESHOLD) * 1.5;
     const visualPitchShift = (smoothPitch - baselinePitch) * 3;
 
     const drawHead = (hx: number, hy: number, angle: number, strokeColor: string, sw: number, seedBase: number) => {
@@ -251,6 +262,14 @@ export const posture: Experiment = {
       if (msgP) {
         pxText(ctx, msgP, cx, ty, "600 0.28px Sora, sans-serif", pColor, "center");
       }
+    }
+
+    // Debug overlay: transform matrix translation (toggle with 'v' key)
+    if (debug) {
+      pxText(ctx, `x: ${smoothMatX.toFixed(1)}`, 0.3, 0.4, "0.2px Sora, sans-serif", stone, "left");
+      pxText(ctx, `y: ${smoothMatY.toFixed(1)}`, 0.3, 0.7, "0.2px Sora, sans-serif", stone, "left");
+      pxText(ctx, `z: ${smoothMatZ.toFixed(1)}`, 0.3, 1.0, "0.2px Sora, sans-serif", stone, "left");
+      pxText(ctx, `p: ${(smoothPitch * 180 / Math.PI).toFixed(0)}°`, 0.3, 1.3, "0.2px Sora, sans-serif", stone, "left");
     }
 
     // Recalibrate hint

@@ -66,7 +66,10 @@ for (const fixture of fixtures) {
     const pitch = parseFloat(pitchStr!);
     const yaw = parseFloat(yawStr!);
 
-    console.log(`${fixture.name}: pitch=${pitch.toFixed(1)}° yaw=${yaw.toFixed(1)}°`);
+    const txStr = await anglesDiv.getAttribute("data-tx");
+    const tyStr = await anglesDiv.getAttribute("data-ty");
+    const tzStr = await anglesDiv.getAttribute("data-tz");
+    console.log(`${fixture.name}: pitch=${pitch.toFixed(1)}° yaw=${yaw.toFixed(1)}° tx=${txStr} ty=${tyStr} tz=${tzStr}`);
 
     if (fixture.pitchRange) {
       expect(pitch, `pitch ${pitch.toFixed(1)}° outside [${fixture.pitchRange}]`)

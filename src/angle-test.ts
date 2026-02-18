@@ -77,7 +77,10 @@ export async function startAngleTest() {
       // Write to DOM for Playwright to read
       anglesDiv.dataset.pitch = pitchDeg.toFixed(1);
       anglesDiv.dataset.yaw = yawDeg.toFixed(1);
-      anglesDiv.textContent = `pitch: ${pitchDeg.toFixed(1)}° yaw: ${yawDeg.toFixed(1)}°`;
+      anglesDiv.dataset.tx = m[12].toFixed(2);
+      anglesDiv.dataset.ty = m[13].toFixed(2);
+      anglesDiv.dataset.tz = m[14].toFixed(2);
+      anglesDiv.textContent = `pitch: ${pitchDeg.toFixed(1)}° yaw: ${yawDeg.toFixed(1)}° t: ${m[12].toFixed(1)},${m[13].toFixed(1)},${m[14].toFixed(1)}`;
 
       // Draw on canvas
       ctx.fillStyle = "#0f0";
