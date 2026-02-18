@@ -18,8 +18,8 @@ const NOD_THRESH = 0.25;
 const TRAVEL_TIME = 8;
 
 // Beat grid
-const BPM = 60;
-const BEAT_INTERVAL = 60 / BPM; // 1.0s
+const BPM = 120;
+const BEAT_INTERVAL = 60 / BPM; // 0.5s
 
 // How far ahead to schedule audio (seconds)
 const SCHEDULE_AHEAD = 0.2;
@@ -122,10 +122,12 @@ function scheduleBeats() {
     scheduledUpToBeat++;
   }
 
-  // Spawn arrows TRAVEL_TIME ahead so they're visible falling from the top
+  // Spawn arrows every other beat (TRAVEL_TIME ahead so they're visible falling)
   const arrowHorizon = ctx.currentTime + TRAVEL_TIME;
   while (beatTime(nextSpawnBeat) < arrowHorizon) {
-    spawnArrowOnBeat(nextSpawnBeat);
+    if (nextSpawnBeat % 2 === 0) {
+      spawnArrowOnBeat(nextSpawnBeat);
+    }
     nextSpawnBeat++;
   }
 }
