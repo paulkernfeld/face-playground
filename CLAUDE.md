@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` — start Vite dev server with hot reload
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
-- `?demo=N` URL param — render experiment N with fake data, no camera needed (for screenshots/visual verification)
+- `?demo=N` URL param — render experiment N (1-indexed) with fake data, no camera needed (for screenshots/visual verification)
 - `?capture&prompt=<name>` — capture raw video frame to `fixtures/<name>.png` (toggle video with `v`, press Space to save)
 - `?angleTest` — minimal FaceMesh page that writes pitch/yaw to `#angles` DOM element (used by Playwright tests)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
@@ -28,7 +28,7 @@ interface Experiment {
   name: string;
   setup(ctx, w, h): void;
   update(face: FaceData | null, dt: number): void;
-  draw(ctx, w, h): void;
+  draw(ctx, w, h, debug?): void;  // debug=true when 'v' overlay is active
   demo?(): void;  // set up fake state for camera-free screenshots
 }
 ```
@@ -41,12 +41,15 @@ interface Experiment {
 
 **Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. `gameUnits` are in raw camera coords (not mirrored) — experiments mirror X themselves (e.g. `w - nose.x`).
 
+**Transform matrix** (`FaceData.rawTransformMatrix`): 4x4 column-major from MediaPipe. Rotation used for pitch/yaw. Translation: `m[12]`=tx, `m[13]`=ty, `m[14]`=tz (cm-ish units). `?angleTest` exposes these as `data-tx/ty/tz` attributes for fixture-based measurement.
+
+**Experiments** (1-indexed for `?demo=N`): 1=headCursor, 2=faceChomp, 3=blendshapeDebug (tension), 4=bodyCreature, 5=redLightGreenLight, 6=ddr, 7=yoga, 8=posture.
+
 ## Experiment ideas
 
 - **Gradual movement ramp-up**: Start from stillness, progressively increase allowed movement range — practice controlled transitions from rest to activity
 - **Distraction gaze test**: Place visual distractors on screen, use iris/gaze tracking to detect when eyes get pulled to them — train focus control
 - **Kasina**: Meditation/visual experience with light patterns or geometric visualizations
-- **Posture tracking**: Detect and provide feedback on body posture (head tilt, forward lean, etc.)
 - **Driving game with gaze control**: Use eye gaze to steer a vehicle or cursor
 - **Mindful coding Claude plugin**: Face-tracking awareness layer during coding sessions
 
@@ -68,6 +71,12 @@ interface Experiment {
 - **Chomp: apple sound** — satisfying sound effect when eating an apple
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - Sent to friends for feedback — waiting for responses
+
+## Philosophy
+
+- Client-only, fully local — no server, no data leaves the browser (privacy by design)
+- Easy/fast/fun to add new experiments — low friction from idea to working demo
+- Ship quickly, iterate with real usage
 
 ## Design Direction
 
