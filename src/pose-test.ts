@@ -60,12 +60,12 @@ export async function startPoseTest() {
     ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    if (result.landmarks.length > 0) {
-      const landmarks = result.landmarks[0];
-      const pose = getYogaPose(landmarks);
+    if (result.worldLandmarks.length > 0) {
+      const worldLm = result.worldLandmarks[0];
+      const pose = getYogaPose(worldLm);
 
       // Write to DOM for Playwright to read
-      const angles = getPoseAngles(landmarks);
+      const angles = getPoseAngles(worldLm);
       poseDiv.dataset.pose = pose ?? "none";
       if (angles) {
         const d = 180 / Math.PI;
@@ -73,7 +73,7 @@ export async function startPoseTest() {
         poseDiv.dataset.elbow = (angles.avgElbow * d).toFixed(1);
         poseDiv.dataset.knee = (angles.avgKnee * d).toFixed(1);
         poseDiv.dataset.hip = (angles.avgHip * d).toFixed(1);
-        poseDiv.dataset.tilt = angles.torsoTilt.toFixed(3);
+        poseDiv.dataset.shouldery = angles.shoulderY.toFixed(4);
       }
       poseDiv.textContent = `pose: ${pose ?? "none"}`;
 

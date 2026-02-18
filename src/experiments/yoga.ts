@@ -203,7 +203,7 @@ export const yoga: Experiment = {
 
   update() {},
 
-  updatePose(poses: Landmarks[], dt: number) {
+  updatePose(poses: Landmarks[], dt: number, worldPoses?: Landmarks[]) {
     updatePeople(poses, people, dt, w);
 
     if (inTransition) {
@@ -219,18 +219,17 @@ export const yoga: Experiment = {
     if (people.length > 0 && people[0].pts.length >= 33) {
       const playerPts = people[0].pts;
 
-      // Per-limb accuracy for coloring (always compare against target ghost)
+      // Per-limb accuracy for coloring (2D comparison against target)
       const targetPts = getCurrentTarget();
       const result = calcAccuracy(playerPts, targetPts);
       jointAccuracies = result.joints;
       playerLimbColors = computeLimbColors(jointAccuracies);
 
-      // Hold detection: use classifier when available, otherwise angle accuracy
-      if (pose.classifyAs) {
-        poseMatched = getYogaPose(playerPts) === pose.classifyAs;
+      // Hold detection: use 3D world landmarks with classifier
+      if (pose.classifyAs && worldPoses && worldPoses.length > 0) {
+        poseMatched = getYogaPose(worldPoses[0]) === pose.classifyAs;
       } else {
-        const overall = result.overall;
-        poseMatched = overall >= 0.6;
+        poseMatched = result.overall >= 0.6;
       }
 
       if (poseMatched) {

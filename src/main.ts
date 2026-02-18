@@ -375,7 +375,10 @@ async function runLoop() {
           z: l.z,
         }))
       );
-      currentExp.updatePose(allPoses, dt);
+      const worldPoses = poseResult.worldLandmarks.map(rawPose =>
+        rawPose.map(l => ({ x: l.x, y: l.y, z: l.z }))
+      );
+      currentExp.updatePose(allPoses, dt, worldPoses);
     }
 
     // Clear full canvas (dark letterbox)

@@ -39,8 +39,8 @@ for (const fixture of fixtures) {
     const elbow = await poseDiv.getAttribute("data-elbow");
     const knee = await poseDiv.getAttribute("data-knee");
     const hip = await poseDiv.getAttribute("data-hip");
-    const tilt = await poseDiv.getAttribute("data-tilt");
-    console.log(`${fixture.name}: detected=${detected} shoulder=${shoulder}° elbow=${elbow}° knee=${knee}° hip=${hip}° tilt=${tilt}`);
+    const shouldery = await poseDiv.getAttribute("data-shouldery");
+    console.log(`${fixture.name}: detected=${detected} shoulder=${shoulder}° elbow=${elbow}° knee=${knee}° hip=${hip}° shoulderY=${shouldery}`);
     expect(detected, `Expected ${fixture.expected} but got ${detected}`).toBe(fixture.expected);
   });
 }

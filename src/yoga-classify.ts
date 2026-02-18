@@ -1,5 +1,5 @@
-// Pure yoga pose classifier based on joint angles.
-// Takes 33 pose landmarks (any objects with x, y), returns a pose name or null.
+// Pure yoga pose classifier based on 3D joint angles.
+// Uses MediaPipe worldLandmarks (metric 3D, hip-centered) for perspective-independent classification.
 
 import {
   L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW,
@@ -9,15 +9,17 @@ import {
 
 export type YogaPose = "mountain" | "volcano" | "tpose" | "plank";
 
-type Point = { x: number; y: number };
+type Point3D = { x: number; y: number; z: number };
 
-/** Angle (radians, 0..π) at vertex B formed by points A→B→C */
-function angleAt(a: Point, b: Point, c: Point): number {
-  const bax = a.x - b.x, bay = a.y - b.y;
-  const bcx = c.x - b.x, bcy = c.y - b.y;
-  const dot = bax * bcx + bay * bcy;
-  const cross = bax * bcy - bay * bcx;
-  return Math.atan2(Math.abs(cross), dot);
+/** Angle (radians, 0..π) at vertex B formed by 3D points A→B→C */
+function angleAt(a: Point3D, b: Point3D, c: Point3D): number {
+  const bax = a.x - b.x, bay = a.y - b.y, baz = a.z - b.z;
+  const bcx = c.x - b.x, bcy = c.y - b.y, bcz = c.z - b.z;
+  const dot = bax * bcx + bay * bcy + baz * bcz;
+  const magBA = Math.sqrt(bax * bax + bay * bay + baz * baz);
+  const magBC = Math.sqrt(bcx * bcx + bcy * bcy + bcz * bcz);
+  if (magBA < 1e-9 || magBC < 1e-9) return 0;
+  return Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC))));
 }
 
 const DEG = Math.PI / 180;
@@ -28,11 +30,11 @@ export interface PoseAngles {
   avgElbow: number;
   avgKnee: number;
   avgHip: number;
-  torsoTilt: number;
+  shoulderY: number; // average shoulder Y in world coords (negative = above hip)
 }
 
 /** Get raw angle values for debugging */
-export function getPoseAngles(lm: Point[]): PoseAngles | null {
+export function getPoseAngles(lm: Point3D[]): PoseAngles | null {
   if (lm.length < 33) return null;
   const lShoulder = angleAt(lm[L_ELBOW], lm[L_SHOULDER], lm[L_HIP]);
   const rShoulder = angleAt(lm[R_ELBOW], lm[R_SHOULDER], lm[R_HIP]);
@@ -42,25 +44,20 @@ export function getPoseAngles(lm: Point[]): PoseAngles | null {
   const rKnee = angleAt(lm[R_HIP], lm[R_KNEE], lm[R_ANKLE]);
   const lHip = angleAt(lm[L_SHOULDER], lm[L_HIP], lm[L_KNEE]);
   const rHip = angleAt(lm[R_SHOULDER], lm[R_HIP], lm[R_KNEE]);
-  const shoulderY = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2;
-  const hipY = (lm[L_HIP].y + lm[R_HIP].y) / 2;
-  const ankleY = (lm[L_ANKLE].y + lm[R_ANKLE].y) / 2;
-  const bodyHeight = Math.abs(ankleY - shoulderY) || 1;
   return {
     avgShoulder: (lShoulder + rShoulder) / 2,
     avgElbow: (lElbow + rElbow) / 2,
     avgKnee: (lKnee + rKnee) / 2,
     avgHip: (lHip + rHip) / 2,
-    torsoTilt: Math.abs(shoulderY - hipY) / bodyHeight,
+    shoulderY: (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2,
   };
 }
 
-/** Classify a set of pose landmarks into a yoga pose, or null if no match. */
-export function getYogaPose(lm: Point[]): YogaPose | null {
+/** Classify 3D world landmarks into a yoga pose, or null if no match. */
+export function getYogaPose(lm: Point3D[]): YogaPose | null {
   if (lm.length < 33) return null;
 
   // Shoulder angles: how far arms are raised from the body
-  // elbow→shoulder→hip angle: small = arms at side, ~90° = T-pose, large = arms up
   const lShoulder = angleAt(lm[L_ELBOW], lm[L_SHOULDER], lm[L_HIP]);
   const rShoulder = angleAt(lm[R_ELBOW], lm[R_SHOULDER], lm[R_HIP]);
   const avgShoulder = (lShoulder + rShoulder) / 2;
@@ -80,29 +77,23 @@ export function getYogaPose(lm: Point[]): YogaPose | null {
   const rHip = angleAt(lm[R_SHOULDER], lm[R_HIP], lm[R_KNEE]);
   const avgHip = (lHip + rHip) / 2;
 
-  // Body orientation: are shoulders roughly level with hips? (horizontal body)
+  // In world coords, Y is vertical (negative = up from hip).
+  // Shoulder Y tells us body orientation: negative = upright, near zero = horizontal
   const shoulderY = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2;
-  const hipY = (lm[L_HIP].y + lm[R_HIP].y) / 2;
-  const ankleY = (lm[L_ANKLE].y + lm[R_ANKLE].y) / 2;
-  const bodyHeight = Math.abs(ankleY - shoulderY) || 1;
-  const torsoTilt = Math.abs(shoulderY - hipY) / bodyHeight; // 0 = horizontal, ~0.5 = upright
+  const isUpright = shoulderY < -0.15; // shoulders well above hips
 
-  // Plank: arms fairly straight, shoulder angle moderate (~30–70°),
-  // hip angle bent compared to standing (~110–160°), elbows straight
-  // This combo distinguishes plank from standing poses where hip > 160°
-  if (avgElbow > 120 * DEG && avgShoulder > 30 * DEG && avgShoulder < 70 * DEG &&
-      avgHip > 110 * DEG && avgHip < 160 * DEG) {
+  // Plank/floor poses: body roughly horizontal (shoulders near hip height)
+  // Plank: arms straight, body straight, not upright
+  if (!isUpright && avgElbow > 120 * DEG && avgHip > 120 * DEG) {
     return "plank";
   }
 
-  // Standing poses: legs and arms roughly straight
+  // Standing poses: upright, legs and arms roughly straight
+  if (!isUpright) return null;
   if (avgKnee < 140 * DEG) return null;
   if (avgElbow < 120 * DEG) return null;
 
   // Classify by shoulder angle (arm raise level)
-  // Mountain: arms down at sides — shoulder angle < 40°
-  // T-pose: arms out horizontal — shoulder angle 60°–120°
-  // Volcano: arms up overhead — shoulder angle > 140°
   if (avgShoulder < 40 * DEG) return "mountain";
   if (avgShoulder > 60 * DEG && avgShoulder < 120 * DEG) return "tpose";
   if (avgShoulder > 140 * DEG) return "volcano";
