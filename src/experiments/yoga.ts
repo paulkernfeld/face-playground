@@ -87,62 +87,22 @@ const POSES: PoseDef[] = [
     },
   },
   {
-    name: "tree pose",
-    holdTime: 4,
+    name: "plank",
+    holdTime: 5,
+    classifyAs: "plank",
     build(cx) {
-      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
+      const p = new Array(33).fill({ x: cx, y: 5.0 }).map(v => ({ ...v }));
       const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
-      set(NOSE, cx, 1.3);
-      set(L_EYE, cx - 0.5, 1.1); set(R_EYE, cx + 0.5, 1.1);
-      set(L_SHOULDER, cx - 1.2, 2.8); set(R_SHOULDER, cx + 1.2, 2.8);
-      // Arms up in namaste
-      set(L_ELBOW, cx - 0.6, 1.8); set(R_ELBOW, cx + 0.6, 1.8);
-      set(L_WRIST, cx - 0.1, 0.8); set(R_WRIST, cx + 0.1, 0.8);
-      set(L_HIP, cx - 0.8, 5.2); set(R_HIP, cx + 0.8, 5.2);
-      // Left leg straight, right foot on left knee
-      set(L_KNEE, cx - 0.8, 6.8); set(R_KNEE, cx + 1.2, 5.5);
-      set(L_ANKLE, cx - 0.8, 8.3); set(R_ANKLE, cx + 0.3, 6.8);
-      set(L_MOUTH, cx - 0.3, 1.7); set(R_MOUTH, cx + 0.3, 1.7);
-      return p;
-    },
-  },
-  {
-    name: "warrior II",
-    holdTime: 4,
-    build(cx) {
-      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
-      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
-      set(NOSE, cx, 1.5);
-      set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
-      set(L_SHOULDER, cx - 1.5, 3.0); set(R_SHOULDER, cx + 1.5, 3.0);
-      // Arms spread wide horizontally
-      set(L_ELBOW, cx - 3.0, 3.0); set(R_ELBOW, cx + 3.0, 3.0);
-      set(L_WRIST, cx - 4.2, 3.0); set(R_WRIST, cx + 4.2, 3.0);
-      set(L_HIP, cx - 1.0, 5.5); set(R_HIP, cx + 1.0, 5.5);
-      // Front knee bent, back leg straight
-      set(L_KNEE, cx - 2.0, 6.5); set(R_KNEE, cx + 1.5, 7.0);
-      set(L_ANKLE, cx - 2.5, 8.3); set(R_ANKLE, cx + 2.0, 8.3);
-      set(L_MOUTH, cx - 0.3, 1.9); set(R_MOUTH, cx + 0.3, 1.9);
-      return p;
-    },
-  },
-  {
-    name: "wide stance",
-    holdTime: 3,
-    build(cx) {
-      const p = new Array(33).fill({ x: cx, y: 4.5 }).map(v => ({ ...v }));
-      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
-      set(NOSE, cx, 1.5);
-      set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
-      set(L_SHOULDER, cx - 1.5, 3.0); set(R_SHOULDER, cx + 1.5, 3.0);
-      // Hands on hips
-      set(L_ELBOW, cx - 2.2, 4.0); set(R_ELBOW, cx + 2.2, 4.0);
-      set(L_WRIST, cx - 1.2, 5.0); set(R_WRIST, cx + 1.2, 5.0);
-      set(L_HIP, cx - 1.0, 5.5); set(R_HIP, cx + 1.0, 5.5);
-      // Wide leg stance
-      set(L_KNEE, cx - 2.5, 7.0); set(R_KNEE, cx + 2.5, 7.0);
-      set(L_ANKLE, cx - 3.0, 8.5); set(R_ANKLE, cx + 3.0, 8.5);
-      set(L_MOUTH, cx - 0.4, 1.9); set(R_MOUTH, cx + 0.4, 1.9);
+      // Body horizontal — head on left, feet on right
+      set(NOSE, cx - 4.5, 4.0);
+      set(L_EYE, cx - 4.2, 3.8); set(R_EYE, cx - 4.8, 3.8);
+      set(L_SHOULDER, cx - 3.0, 4.5); set(R_SHOULDER, cx - 3.0, 5.0);
+      set(L_ELBOW, cx - 3.0, 5.8); set(R_ELBOW, cx - 3.0, 6.3);
+      set(L_WRIST, cx - 3.0, 7.0); set(R_WRIST, cx - 3.0, 7.5);
+      set(L_HIP, cx + 1.0, 4.5); set(R_HIP, cx + 1.0, 5.0);
+      set(L_KNEE, cx + 3.0, 4.5); set(R_KNEE, cx + 3.0, 5.0);
+      set(L_ANKLE, cx + 5.0, 4.5); set(R_ANKLE, cx + 5.0, 5.0);
+      set(L_MOUTH, cx - 4.0, 4.3); set(R_MOUTH, cx - 4.6, 4.3);
       return p;
     },
   },

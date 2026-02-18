@@ -10,6 +10,7 @@ const fixtures: { name: string; expected: YogaPose }[] = [
   { name: "mountain", expected: "mountain" },
   { name: "volcano", expected: "volcano" },
   { name: "tpose", expected: "tpose" },
+  { name: "plank", expected: "plank" },
 ];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,12 @@ for (const fixture of fixtures) {
     await page.waitForTimeout(3000);
 
     const detected = await poseDiv.getAttribute("data-pose");
-    console.log(`${fixture.name}: detected=${detected}, expected=${fixture.expected}`);
+    const shoulder = await poseDiv.getAttribute("data-shoulder");
+    const elbow = await poseDiv.getAttribute("data-elbow");
+    const knee = await poseDiv.getAttribute("data-knee");
+    const hip = await poseDiv.getAttribute("data-hip");
+    const tilt = await poseDiv.getAttribute("data-tilt");
+    console.log(`${fixture.name}: detected=${detected} shoulder=${shoulder}° elbow=${elbow}° knee=${knee}° hip=${hip}° tilt=${tilt}`);
     expect(detected, `Expected ${fixture.expected} but got ${detected}`).toBe(fixture.expected);
   });
 }

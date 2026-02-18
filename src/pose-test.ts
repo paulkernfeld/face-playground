@@ -6,7 +6,7 @@ import {
   PoseLandmarker,
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
-import { getYogaPose } from "./yoga-classify";
+import { getYogaPose, getPoseAngles } from "./yoga-classify";
 
 export async function startPoseTest() {
   const video = document.getElementById("webcam") as HTMLVideoElement;
@@ -65,7 +65,16 @@ export async function startPoseTest() {
       const pose = getYogaPose(landmarks);
 
       // Write to DOM for Playwright to read
+      const angles = getPoseAngles(landmarks);
       poseDiv.dataset.pose = pose ?? "none";
+      if (angles) {
+        const d = 180 / Math.PI;
+        poseDiv.dataset.shoulder = (angles.avgShoulder * d).toFixed(1);
+        poseDiv.dataset.elbow = (angles.avgElbow * d).toFixed(1);
+        poseDiv.dataset.knee = (angles.avgKnee * d).toFixed(1);
+        poseDiv.dataset.hip = (angles.avgHip * d).toFixed(1);
+        poseDiv.dataset.tilt = angles.torsoTilt.toFixed(3);
+      }
       poseDiv.textContent = `pose: ${pose ?? "none"}`;
 
       // Draw on canvas
