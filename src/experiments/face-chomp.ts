@@ -74,6 +74,24 @@ let w = 16;
 let h = 9;
 let rc: GameRoughCanvas;
 let seedCounter = 1000;
+let audioCtx: AudioContext | null = null;
+
+function playDing() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, t);
+  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
+  gain.gain.setValueAtTime(0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
 
 function randPos(): { x: number; y: number } {
   return { x: MIN_X + Math.random() * (MAX_X - MIN_X), y: MIN_Y + Math.random() * (MAX_Y - MIN_Y) };
@@ -325,6 +343,7 @@ export const faceChomp: Experiment = {
         if (dist(px, py, fruits[i].x, fruits[i].y) < PLAYER_R + FRUIT_R) {
           fruitsEaten++;
           score++;
+          playDing();
           fruits[i] = spawnFruit();
           if (fruitsEaten >= HUNTER_FIRST_AT && (fruitsEaten - HUNTER_FIRST_AT) % HUNTER_EVERY === 0) {
             skulls.push(spawnSkull(true));
