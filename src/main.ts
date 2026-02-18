@@ -142,7 +142,7 @@ function showMenu() {
   experiments.forEach((exp, i) => {
     const m = experimentMeta[i];
     html += `
-        <button class="experiment-card${i === 1 ? ' featured' : ''}" data-exp="${i}" style="--accent: ${m.color}">
+        <button class="experiment-card" data-exp="${i}" style="--accent: ${m.color}">
           <span class="card-icon">${m.icon}</span>
           <span class="card-name">${exp.name}</span>
           <span class="card-desc">${m.desc}</span>

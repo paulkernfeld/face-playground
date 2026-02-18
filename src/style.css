@@ -168,12 +168,6 @@ body {
 }
 
 
-.experiment-card.featured {
-  grid-column: 1 / -1;
-  background: rgba(255,255,255,0.95);
-  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
-}
-
 .experiment-card:hover {
   transform: translateY(-6px);
 }
