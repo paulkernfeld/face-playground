@@ -39,7 +39,7 @@ interface Experiment {
 
 **DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter).
 
-**Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. Coordinates are mirrored (x inverted) so moving right moves cursor right.
+**Key landmark indices**: 1=nose tip, 6=nose bridge, 13=upper lip, 14=lower lip, 152=chin. `gameUnits` are in raw camera coords (not mirrored) — experiments mirror X themselves (e.g. `w - nose.x`).
 
 ## Experiment ideas
 
@@ -73,6 +73,7 @@ interface Experiment {
 
 - Playful, sketchy — intentionally unpolished, hand-drawn feel
 - Warm muted colors from `src/palette.ts` (rose, sage, honey, teal, lavender, sky, terra), Fredoka + Sora fonts
+- **No hardcoded hex colors in experiments** — always import from `src/palette.ts`
 - rough.js for hand-drawn shapes — use `GameRoughCanvas` (`src/rough-scale.ts`), NOT raw `rough.canvas()`. Raw rough.js has hardcoded pixel-scale offsets that break in our 16x9 game-unit coordinate system.
 
 ## Constraints
