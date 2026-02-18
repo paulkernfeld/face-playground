@@ -11,17 +11,19 @@ import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
 import { blendshapeDebug } from "./experiments/blendshape-debug";
 import { bodyCreature } from "./experiments/body-creature";
+import { redLightGreenLight } from "./experiments/red-light-green-light";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature];
+const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight];
 
 const experimentMeta = [
   { icon: '🎯', desc: 'move a cursor with your nose', color: '#FF6B6B' },
   { icon: '😮', desc: 'pac-man, controlled with your face', color: '#FFD93D' },
   { icon: '🧘', desc: 'monitor & release facial tension', color: '#2EC4B6' },
   { icon: '🧌', desc: 'a silly creature that follows your body', color: '#9B59B6' },
+  { icon: '🚦', desc: 'freeze when the light turns red!', color: '#F44336' },
 ];
 
 // -- DOM --
