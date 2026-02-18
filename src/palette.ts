@@ -29,7 +29,6 @@ export const danger = rose;
 export const experimentColors = [
   teal,      // head cursor
   honey,     // face chomp
-  sage,      // tension
   lavender,  // body creature
   rose,      // red light green light
   sky,       // rhythm

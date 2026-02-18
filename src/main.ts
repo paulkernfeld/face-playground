@@ -9,7 +9,6 @@ import { GameRoughCanvas } from './rough-scale';
 import type { Experiment, FaceData, Landmarks, Blendshapes } from "./types";
 import { headCursor } from "./experiments/head-cursor";
 import { faceChomp } from "./experiments/face-chomp";
-import { blendshapeDebug } from "./experiments/blendshape-debug";
 import { bodyCreature } from "./experiments/body-creature";
 import { redLightGreenLight } from "./experiments/red-light-green-light";
 import { ddr } from "./experiments/ddr";
@@ -21,17 +20,16 @@ import { pxText } from "./px-text";
 import { experimentColors, honey, warning as warningColor, canvasBg } from "./palette";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight, ddr, yoga, posture];
+const experiments: Experiment[] = [headCursor, faceChomp, bodyCreature, redLightGreenLight, ddr, yoga, posture];
 
 const experimentMeta = [
   { icon: '🎯', desc: 'move a cursor with your nose', color: experimentColors[0] },
   { icon: '😮', desc: 'pac-man, controlled with your face', color: experimentColors[1] },
-  { icon: '🧘', desc: 'monitor & release facial tension', color: experimentColors[2] },
-  { icon: '🧌', desc: 'a silly creature that follows your body', color: experimentColors[3] },
-  { icon: '🚦', desc: 'freeze when the light turns red!', color: experimentColors[4] },
-  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: experimentColors[5] },
-  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: experimentColors[6] },
-  { icon: '🪑', desc: 'gentle nudge when your posture drifts', color: experimentColors[7] },
+  { icon: '🧌', desc: 'a silly creature that follows your body', color: experimentColors[2] },
+  { icon: '🚦', desc: 'freeze when the light turns red!', color: experimentColors[3] },
+  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: experimentColors[4] },
+  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: experimentColors[5] },
+  { icon: '🪑', desc: 'gentle nudge when your posture drifts', color: experimentColors[6] },
 ];
 
 // -- DOM --

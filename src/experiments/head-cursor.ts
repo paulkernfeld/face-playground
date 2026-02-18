@@ -11,8 +11,6 @@ let cursorY = 4.5;
 // Smoothing factor: 0 = no smoothing, 1 = frozen
 const SMOOTH = 0.7;
 
-let trail: { x: number; y: number }[] = [];
-const TRAIL_LEN = 20;
 let tracking = false;
 let w = 16;
 let h = 9;
@@ -28,7 +26,6 @@ export const headCursor: Experiment = {
     h = hh;
     cursorX = w / 2;
     cursorY = h / 2;
-    trail = [];
     rc = new GameRoughCanvas(ctx.canvas);
   },
 
@@ -45,8 +42,6 @@ export const headCursor: Experiment = {
     pitch = face.headPitch;
     yaw = face.headYaw;
 
-    trail.push({ x: cursorX, y: cursorY });
-    if (trail.length > TRAIL_LEN) trail.shift();
   },
 
   demo() {
@@ -55,30 +50,9 @@ export const headCursor: Experiment = {
     cursorY = 3.5;
     pitch = 0.1;
     yaw = -0.05;
-    // Build a curving trail
-    trail = [];
-    for (let i = 0; i < TRAIL_LEN; i++) {
-      const t = i / TRAIL_LEN;
-      trail.push({
-        x: 4 + t * 6,
-        y: 5.5 - Math.sin(t * Math.PI) * 2,
-      });
-    }
   },
 
   draw(ctx, _w, _h) {
-    // Draw trail
-    for (let i = 0; i < trail.length; i++) {
-      const t = i / trail.length;
-      rc.circle(trail[i].x, trail[i].y, (0.05 + t * 0.15) * 2, {
-        fill: `rgba(124, 192, 184, ${t * 0.5})`,
-        fillStyle: 'solid',
-        stroke: 'none',
-        roughness: 0.8,
-        seed: i + 1,
-      });
-    }
-
     // Draw cursor
     const cx = cursorX;
     const cy = cursorY;

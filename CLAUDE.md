@@ -43,7 +43,7 @@ interface Experiment {
 
 **Transform matrix** (`FaceData.rawTransformMatrix`): 4x4 column-major from MediaPipe. Rotation used for pitch/yaw. Translation: `m[12]`=tx, `m[13]`=ty, `m[14]`=tz (cm-ish units). `?angleTest` exposes these as `data-tx/ty/tz` attributes for fixture-based measurement.
 
-**Experiments** (1-indexed for `?demo=N`): 1=headCursor, 2=faceChomp, 3=blendshapeDebug (tension), 4=bodyCreature, 5=redLightGreenLight, 6=ddr, 7=yoga, 8=posture.
+**Experiments** (1-indexed for `?demo=N`): 1=headCursor, 2=faceChomp, 3=bodyCreature, 4=redLightGreenLight, 5=ddr, 6=yoga, 7=posture.
 
 ## Experiment ideas
 
@@ -63,10 +63,8 @@ interface Experiment {
 - **Light background**: Switch from dark canvas bg to light — users need light for camera tracking anyway
 - **Yoga: use angles not positions** — match joint angles instead of absolute body position, so it works regardless of where you stand
 - **Yoga: alignment visibility** — unaligned body parts render in charcoal, aligned parts in color; show full limb segments (arm, not just elbow)
-- **Head cursor: remove trail** — trail is unnecessary clutter
 - **DDR: fixed repeating pattern** — replace random arrows with: up, center, down, center, left, right, left, right (loop forever)
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
-- **Hide tension experiment** — not ready for public, remove from menu
 - **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
 - **Chomp: apple sound** — satisfying sound effect when eating an apple
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
