@@ -6,7 +6,7 @@ import {
   PoseLandmarker,
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
-import { getYogaPose, getPoseAngles } from "./yoga-classify";
+import { getYogaPose, getPoseAngles, classifyBodyParts } from "./yoga-classify";
 
 export async function startPoseTest() {
   const video = document.getElementById("webcam") as HTMLVideoElement;
@@ -74,6 +74,13 @@ export async function startPoseTest() {
         poseDiv.dataset.knee = (angles.avgKnee * d).toFixed(1);
         poseDiv.dataset.hip = (angles.avgHip * d).toFixed(1);
         poseDiv.dataset.shouldery = angles.shoulderY.toFixed(4);
+      }
+      const parts = classifyBodyParts(worldLm);
+      if (parts) {
+        poseDiv.dataset.torso = parts.torso;
+        poseDiv.dataset.leftarm = parts.leftArm;
+        poseDiv.dataset.rightarm = parts.rightArm;
+        poseDiv.dataset.legs = parts.legs;
       }
       poseDiv.textContent = `pose: ${pose ?? "none"}`;
 

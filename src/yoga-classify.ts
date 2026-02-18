@@ -45,7 +45,7 @@ const DEG = Math.PI / 180;
 
 function classifyTorso(lm: Point3D[]): TorsoState | null {
   const shoulderY = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2;
-  if (shoulderY < -0.15) return "upright";
+  if (shoulderY < -0.2) return "upright";
 
   // Horizontal — use cross product to determine prone vs supine.
   // Body-facing normal = (R_SHOULDER - L_SHOULDER) x (shoulder_mid - hip_mid)
