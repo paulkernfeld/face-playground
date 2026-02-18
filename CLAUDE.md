@@ -71,6 +71,9 @@ interface Experiment {
 - **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
 - **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
 - **Chomp: apple sound** — satisfying sound effect when eating an apple
+- **Chomp: pac-man color** — make the pac-man always yellow-ish, not changing color between mouth open/closed
+- **Warning system refactor** — chomp's "open your mouth" warning may overlap the main file's face-visibility warning. Refactor so main.ts sends errors/warnings down to experiments via `FaceData` or a callback, and experiments can optionally render them. Face-visibility warning should override game-level warnings.
+- **Chomp: smarter "close mouth" hint** — only show "close your mouth to move faster" when the nose cursor is far from the pac-man AND mouth is open (not always when mouth is open)
 - **iPad**: field of view seems much larger than desktop — check camera resolution handling
 - **Experiment cleanup**: Ensure every experiment cleans up after itself (audio contexts, timers, event listeners) when returning to menu
 - Sent to friends for feedback — waiting for responses
