@@ -254,7 +254,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
         delegate: "GPU",
       },
       runningMode: "VIDEO",
-      numPoses: 1,
+      numPoses: 4,
     });
   }
 
@@ -352,17 +352,14 @@ async function runLoop() {
     // Detect pose landmarks (only if current experiment uses them)
     if (currentExp.updatePose && poseLandmarker && video.readyState >= 2) {
       const poseResult = poseLandmarker.detectForVideo(video, now);
-      if (poseResult.landmarks.length > 0) {
-        const rawPose = poseResult.landmarks[0];
-        const poseLandmarks = rawPose.map(l => ({
+      const allPoses = poseResult.landmarks.map(rawPose =>
+        rawPose.map(l => ({
           x: remap(l.x) * GAME_W,
           y: remap(l.y) * GAME_H,
           z: l.z,
-        }));
-        currentExp.updatePose(poseLandmarks, dt);
-      } else {
-        currentExp.updatePose(null, dt);
-      }
+        }))
+      );
+      currentExp.updatePose(allPoses, dt);
     }
 
     // Clear full canvas (dark letterbox)
