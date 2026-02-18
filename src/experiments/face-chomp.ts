@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal, terra } from '../palette';
+import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal } from '../palette';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -234,13 +234,9 @@ export const faceChomp: Experiment = {
         }
       }
 
-      // Check if far from all fruits with mouth open (hint to close mouth)
+      // Check if cursor is far from pac-man with mouth open (hint to close mouth)
       if (!nearFruitButClosed && mouthOpen > 0.3) {
-        let nearestFruitDist = Infinity;
-        for (const f of fruits) {
-          nearestFruitDist = Math.min(nearestFruitDist, dist(px, py, f.x, f.y));
-        }
-        if (nearestFruitDist > 3.0) {
+        if (dist(cursorX, cursorY, px, py) > 2.0) {
           farFromFruitAndOpen = true;
         }
       }
@@ -532,7 +528,7 @@ export const faceChomp: Experiment = {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
         playerColor = flash ? honey : sky;
       } else {
-        playerColor = canMove ? honey : terra;
+        playerColor = honey;
       }
       // Pac-man arc
       rc.arc(cx, cy, PLAYER_R * 2, PLAYER_R * 2, mouthAngle, Math.PI * 2 - mouthAngle, true, {
