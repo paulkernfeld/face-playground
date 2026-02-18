@@ -11,22 +11,8 @@ import {
   L_MOUTH, R_MOUTH,
   updatePeople, drawPerson, makePerson, makeDemoPose,
 } from './creature-shared';
-import { getYogaPose } from '../yoga-classify';
-import type { YogaPose } from '../yoga-classify';
-
-// Angle triplets: [parent, vertex, child] — we measure the angle at the vertex
-// This makes matching position-independent: only body shape matters
-const ANGLE_TRIPLETS: [number, number, number][] = [
-  [L_ELBOW, L_SHOULDER, L_HIP],    // left shoulder angle
-  [R_ELBOW, R_SHOULDER, R_HIP],    // right shoulder angle
-  [L_SHOULDER, L_ELBOW, L_WRIST],  // left elbow angle
-  [R_SHOULDER, R_ELBOW, R_WRIST],  // right elbow angle
-  [L_SHOULDER, L_HIP, L_KNEE],     // left hip angle
-  [R_SHOULDER, R_HIP, R_KNEE],     // right hip angle
-  [L_HIP, L_KNEE, L_ANKLE],        // left knee angle
-  [R_HIP, R_KNEE, R_ANKLE],        // right knee angle
-];
-
+import { getYogaPose, classifyBodyParts, POSE_PARTS } from '../yoga-classify';
+import type { YogaPose, BodyPartStates } from '../yoga-classify';
 
 // Pose definitions: name + target positions (relative to center)
 interface PoseDef {
@@ -106,6 +92,26 @@ const POSES: PoseDef[] = [
       return p;
     },
   },
+  {
+    name: "shavasana",
+    holdTime: 5,
+    classifyAs: "shavasana",
+    build(cx) {
+      const p = new Array(33).fill({ x: cx, y: 5.0 }).map(v => ({ ...v }));
+      const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
+      // Body horizontal face-up — head on left, feet on right
+      set(NOSE, cx - 4.5, 4.5);
+      set(L_EYE, cx - 4.2, 4.7); set(R_EYE, cx - 4.8, 4.7);
+      set(L_SHOULDER, cx - 3.0, 4.2); set(R_SHOULDER, cx - 3.0, 5.3);
+      set(L_ELBOW, cx - 1.5, 3.8); set(R_ELBOW, cx - 1.5, 5.7);
+      set(L_WRIST, cx - 0.5, 3.5); set(R_WRIST, cx - 0.5, 6.0);
+      set(L_HIP, cx + 1.0, 4.2); set(R_HIP, cx + 1.0, 5.3);
+      set(L_KNEE, cx + 3.0, 4.0); set(R_KNEE, cx + 3.0, 5.5);
+      set(L_ANKLE, cx + 5.0, 3.8); set(R_ANKLE, cx + 5.0, 5.7);
+      set(L_MOUTH, cx - 4.0, 4.8); set(R_MOUTH, cx - 4.6, 4.8);
+      return p;
+    },
+  },
 ];
 
 let rc: GameRoughCanvas;
@@ -121,60 +127,21 @@ let transitionTimer = 0;
 const TRANSITION_DURATION = 2;
 let inTransition = true;
 
-// Per-angle accuracy for limb coloring
-let jointAccuracies: number[] = [];
+// Body-part classification for limb coloring
+let currentBodyParts: BodyPartStates | null = null;
 let playerLimbColors: LimbColors = {};
 
-const LIMB_GOOD = 0.7; // angle accuracy threshold for "aligned"
-
-/** Compute per-limb colors from angle accuracies. Good limbs = undefined (use palette), bad = charcoal */
-function computeLimbColors(accs: number[]): LimbColors {
-  if (accs.length < 8) return {};
-  const ok = (i: number) => accs[i] >= LIMB_GOOD;
-  // ANGLE_TRIPLETS indices: 0=L_SHOULDER, 1=R_SHOULDER, 2=L_ELBOW, 3=R_ELBOW,
-  //                         4=L_HIP, 5=R_HIP, 6=L_KNEE, 7=R_KNEE
+/** Compute per-limb colors by comparing classified body parts against the target pose */
+function computeLimbColors(parts: BodyPartStates | null, targetPose: YogaPose | undefined): LimbColors {
+  if (!parts || !targetPose) return {};
+  const target = POSE_PARTS[targetPose];
   return {
-    lArm: ok(0) && ok(2) ? undefined : charcoal,
-    rArm: ok(1) && ok(3) ? undefined : charcoal,
-    lLeg: ok(4) && ok(6) ? undefined : charcoal,
-    rLeg: ok(5) && ok(7) ? undefined : charcoal,
-    body: ok(0) && ok(1) && ok(4) && ok(5) ? undefined : charcoal,
+    body: parts.torso === target.torso ? undefined : charcoal,
+    lArm: parts.leftArm === target.leftArm ? undefined : charcoal,
+    rArm: parts.rightArm === target.rightArm ? undefined : charcoal,
+    lLeg: parts.legs === target.legs ? undefined : charcoal,
+    rLeg: parts.legs === target.legs ? undefined : charcoal,
   };
-}
-
-/** Angle (radians) at vertex B formed by points A→B→C */
-function angleAt(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }): number {
-  const bax = a.x - b.x, bay = a.y - b.y;
-  const bcx = c.x - b.x, bcy = c.y - b.y;
-  const dot = bax * bcx + bay * bcy;
-  const cross = bax * bcy - bay * bcx;
-  return Math.atan2(Math.abs(cross), dot); // 0..π
-}
-
-function calcAccuracy(player: { x: number; y: number }[], target: { x: number; y: number }[]): { overall: number; joints: number[] } {
-  const joints: number[] = [];
-  let total = 0;
-
-  for (const [a, b, c] of ANGLE_TRIPLETS) {
-    if (a >= player.length || b >= player.length || c >= player.length ||
-        a >= target.length || b >= target.length || c >= target.length) {
-      joints.push(0);
-      continue;
-    }
-    const playerAngle = angleAt(player[a], player[b], player[c]);
-    const targetAngle = angleAt(target[a], target[b], target[c]);
-    const diff = Math.abs(playerAngle - targetAngle);
-    // Map angle difference to accuracy: 0 diff = 1.0, >45° = 0.0
-    const acc = Math.max(0, 1 - diff / (Math.PI / 4));
-    joints.push(acc);
-    total += acc;
-  }
-
-  return { overall: total / ANGLE_TRIPLETS.length, joints };
-}
-
-function getCurrentTarget(): { x: number; y: number }[] {
-  return POSES[currentPoseIdx].build(w * 0.5);
 }
 
 function advancePose() {
@@ -198,7 +165,7 @@ export const yoga: Experiment = {
     posesCompleted = 0;
     inTransition = true;
     transitionTimer = 0;
-    jointAccuracies = [];
+    currentBodyParts = null;
   },
 
   update() {},
@@ -217,19 +184,17 @@ export const yoga: Experiment = {
     const pose = POSES[currentPoseIdx];
 
     if (people.length > 0 && people[0].pts.length >= 33) {
-      const playerPts = people[0].pts;
-
-      // Per-limb accuracy for coloring (2D comparison against target)
-      const targetPts = getCurrentTarget();
-      const result = calcAccuracy(playerPts, targetPts);
-      jointAccuracies = result.joints;
-      playerLimbColors = computeLimbColors(jointAccuracies);
+      // Classify body parts from 3D world landmarks for limb coloring + hold detection
+      if (worldPoses && worldPoses.length > 0) {
+        currentBodyParts = classifyBodyParts(worldPoses[0]);
+        playerLimbColors = computeLimbColors(currentBodyParts, pose.classifyAs);
+      }
 
       // Hold detection: use 3D world landmarks with classifier
       if (pose.classifyAs && worldPoses && worldPoses.length > 0) {
         poseMatched = getYogaPose(worldPoses[0]) === pose.classifyAs;
       } else {
-        poseMatched = result.overall >= 0.6;
+        poseMatched = false;
       }
 
       if (poseMatched) {
@@ -253,9 +218,9 @@ export const yoga: Experiment = {
 
     // Player in T-pose with some limbs slightly off
     const playerPts = makeDemoPose(w * 0.5);
-    // Shift left wrist down (bad left elbow angle)
+    // Shift left wrist down (bad left arm)
     playerPts[L_WRIST] = { x: playerPts[L_WRIST].x, y: playerPts[L_WRIST].y + 1.0 };
-    // Shift right knee out (bad right knee angle)
+    // Shift right knee out (bad right leg)
     playerPts[R_KNEE] = { x: playerPts[R_KNEE].x + 0.8, y: playerPts[R_KNEE].y };
 
     people = [{
@@ -268,11 +233,15 @@ export const yoga: Experiment = {
       handPhase: 1.5,
     }];
 
-    // Calculate limb coloring for demo
-    const targetPts = POSES[2].build(w * 0.5);
-    const result = calcAccuracy(playerPts, targetPts);
-    jointAccuracies = result.joints;
-    playerLimbColors = computeLimbColors(jointAccuracies);
+    // Simulate body-part classification for demo:
+    // Left arm is wrong (wrist shifted), right leg is wrong (knee shifted)
+    currentBodyParts = {
+      torso: "upright",
+      leftArm: "down",     // bad — should be "out" for tpose
+      rightArm: "out",     // good
+      legs: "straight",    // still straight enough visually
+    };
+    playerLimbColors = computeLimbColors(currentBodyParts, "tpose");
   },
 
   draw(ctx) {

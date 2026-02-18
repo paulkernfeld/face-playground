@@ -11,6 +11,7 @@ const fixtures: { name: string; expected: YogaPose }[] = [
   { name: "volcano", expected: "volcano" },
   { name: "tpose", expected: "tpose" },
   { name: "plank", expected: "plank" },
+  { name: "shavasana", expected: "shavasana" },
 ];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
