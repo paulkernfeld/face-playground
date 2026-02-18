@@ -1,7 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose } from '../palette';
+import { sage, honey, rose, stone } from '../palette';
 import type { PersonState } from './creature-shared';
 import {
   L_WRIST, R_WRIST, L_SHOULDER, R_SHOULDER,
@@ -143,7 +143,7 @@ export const redLightGreenLight: Experiment = {
     }
 
     if (people.length === 0) {
-      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', '#888', 'center');
+      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', stone, 'center');
       return;
     }
 

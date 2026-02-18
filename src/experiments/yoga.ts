@@ -1,7 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose } from '../palette';
+import { sage, honey, rose, stone, cream } from '../palette';
 import type { PersonState } from './creature-shared';
 import {
   NOSE, L_EYE, R_EYE,
@@ -271,7 +271,7 @@ export const yoga: Experiment = {
 
     // Draw player(s)
     if (people.length === 0) {
-      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', '#888', 'center');
+      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', stone, 'center');
       return;
     }
 
@@ -311,13 +311,13 @@ export const yoga: Experiment = {
 
     // Pose name (top center)
     const pose = POSES[currentPoseIdx];
-    pxText(ctx, pose.name, w / 2, 0.6, "bold 0.4px Fredoka, sans-serif", "#fff", "center");
+    pxText(ctx, pose.name, w / 2, 0.6, "bold 0.4px Fredoka, sans-serif", cream, "center");
 
     // Transition message
     if (inTransition) {
       const alpha = Math.max(0, 1 - transitionTimer / TRANSITION_DURATION);
       ctx.globalAlpha = alpha;
-      pxText(ctx, `next: ${pose.name}`, w / 2, h / 2, "bold 0.5px Fredoka, sans-serif", "#FFD93D", "center");
+      pxText(ctx, `next: ${pose.name}`, w / 2, h / 2, "bold 0.5px Fredoka, sans-serif", honey, "center");
       ctx.globalAlpha = 1;
     }
 

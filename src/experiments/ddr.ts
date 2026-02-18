@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { teal, rose, honey, charcoal } from '../palette';
+import { teal, rose, honey, charcoal, stone, cream } from '../palette';
 
 interface Arrow {
   // Times are in game seconds (relative to audioStartTime)
@@ -327,8 +327,8 @@ export const ddr: Experiment = {
         alpha = Math.min(1, progress * 3);
       }
 
-      const color = arrow.hit === 'miss' ? '#555'
-        : arrow.hit === 'hit' ? '#fff'
+      const color = arrow.hit === 'miss' ? stone
+        : arrow.hit === 'hit' ? cream
         : teal;
 
       const size = arrow.hit ? ARROW_SIZE * (1 + (t - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
@@ -337,7 +337,7 @@ export const ddr: Experiment = {
     }
 
     // Score (top right)
-    pxText(ctx, `${score}`, w - 0.3, 0.6, "bold 0.4px monospace", "#fff", "right");
+    pxText(ctx, `${score}`, w - 0.3, 0.6, "bold 0.4px monospace", cream, "right");
 
     // Combo (top left)
     if (combo > 1) {
@@ -371,7 +371,7 @@ export const ddr: Experiment = {
       // Vertical guide line
       ctx.save();
       ctx.globalAlpha = 0.1;
-      ctx.strokeStyle = '#fff';
+      ctx.strokeStyle = cream;
       ctx.lineWidth = 0.02;
       ctx.beginPath();
       ctx.moveTo(indicatorX, indicatorCY - barH);

@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal } from '../palette';
+import { sage, honey, rose, lavender, sky, cream, charcoal, stone, teal, terra } from '../palette';
 
 // Nose tip for position tracking
 const NOSE_TIP = 1;
@@ -513,7 +513,7 @@ export const faceChomp: Experiment = {
         const flash = warning && Math.floor(performance.now() / 150) % 2 === 0;
         playerColor = flash ? honey : sky;
       } else {
-        playerColor = canMove ? honey : '#A89860';
+        playerColor = canMove ? honey : terra;
       }
       // Pac-man arc
       rc.arc(cx, cy, PLAYER_R * 2, PLAYER_R * 2, mouthAngle, Math.PI * 2 - mouthAngle, true, {
@@ -560,7 +560,7 @@ export const faceChomp: Experiment = {
     }
 
     // Score
-    pxText(ctx, `${score}`, w - 0.25, 0.5, "bold 0.35px monospace", "#fff", "right");
+    pxText(ctx, `${score}`, w - 0.25, 0.5, "bold 0.35px monospace", cream, "right");
 
     // Pre-game prompt
     if (!gameStarted && alive) {
@@ -570,7 +570,7 @@ export const faceChomp: Experiment = {
     // Death message
     if (!alive) {
       pxText(ctx, "CHOMP'D", w / 2, h / 2 - 0.3, "bold 0.6px monospace", rose, "center");
-      pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", "#fff", "center");
+      pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", cream, "center");
       if (performance.now() - deathTime > 2000) {
         pxText(ctx, "open mouth to restart", w / 2, h / 2 + 0.8, "0.22px monospace", "rgba(255,255,255,0.4)", "center");
       }

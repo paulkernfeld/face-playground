@@ -17,7 +17,7 @@ import { yoga } from "./experiments/yoga";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
 import { pxText } from "./px-text";
-import { experimentColors, honey, warning as warningColor } from "./palette";
+import { experimentColors, honey, warning as warningColor, canvasBg } from "./palette";
 
 // -- Registry --
 const experiments: Experiment[] = [headCursor, faceChomp, blendshapeDebug, bodyCreature, redLightGreenLight, ddr, yoga];
@@ -377,7 +377,7 @@ async function runLoop() {
     }
 
     // Clear full canvas (dark letterbox)
-    ctx.fillStyle = "#1a1a2e";
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Enter game-unit transform
@@ -512,7 +512,7 @@ if (angleTestParam !== null) {
     currentExp.demo?.();
 
     // Render one frame in game-unit space
-    ctx.fillStyle = "#1a1a2e";
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(gameX, gameY);

@@ -1,6 +1,6 @@
 import type { Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
-import { CREATURE_PALETTES, SPARK_COLORS as PALETTE_SPARK_COLORS, charcoal } from '../palette';
+import { CREATURE_PALETTES, SPARK_COLORS as PALETTE_SPARK_COLORS, charcoal, cream, ink } from '../palette';
 
 // Pose landmark indices
 export const NOSE = 0;
@@ -216,8 +216,8 @@ function drawLimb(rc: GameRoughCanvas, p: { x: number; y: number }[], a: number,
 
 function drawGooglyEye(ctx: CanvasRenderingContext2D, rc: GameRoughCanvas, cx: number, cy: number, px: number, py: number, seed: number) {
   const eyeR = 0.35;
-  rc.circle(cx, cy, eyeR * 2, { fill: '#fff', fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.04, roughness: 1.2, seed });
-  rc.circle(px, py, eyeR * 0.8, { fill: '#222', fillStyle: 'solid', stroke: 'none', roughness: 0.8, seed: seed + 1 });
+  rc.circle(cx, cy, eyeR * 2, { fill: cream, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.04, roughness: 1.2, seed });
+  rc.circle(px, py, eyeR * 0.8, { fill: ink, fillStyle: 'solid', stroke: 'none', roughness: 0.8, seed: seed + 1 });
   ctx.fillStyle = '#fff';
   ctx.beginPath();
   ctx.arc(px + 0.06, py - 0.06, 0.06, 0, Math.PI * 2);

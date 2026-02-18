@@ -1,7 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { BALL_COLORS as PALETTE_BALL_COLORS, charcoal } from '../palette';
+import { BALL_COLORS as PALETTE_BALL_COLORS, charcoal, rose, sage, stone, honey, terra } from '../palette';
 import type { PersonState, Spark } from './creature-shared';
 import {
   SPARK_COLORS,
@@ -22,7 +22,7 @@ let appleX = 0, appleY = 0;
 let appleAlive = false;
 let appleSeed = 200;
 
-const APPLE_PARTICLE_COLORS = ['#D32F2F', '#F44336', '#E53935', '#4CAF50', '#66BB6A', '#FFEB3B'];
+const APPLE_PARTICLE_COLORS = [rose, rose, terra, sage, sage, honey];
 
 function spawnApple() {
   appleX = 1.5 + Math.random() * (w - 3);
@@ -179,8 +179,8 @@ export const bodyCreature: Experiment = {
       { ...makePerson(), pts: makeDemoPose(11), lPupilX: 10.5, lPupilY: 1.3, rPupilX: 11.5, rPupilY: 1.3, handPhase: 2 },
     ];
     balls = [
-      { x: 8, y: 3, vx: 0, vy: 0, r: BALL_R, color1: '#FF6B6B', color2: '#fff', spin: 0.3, seed: 500 },
-      { x: 3, y: 5, vx: 0, vy: 0, r: BALL_R, color1: '#4FC3F7', color2: '#fff', spin: -0.5, seed: 501 },
+      { x: 8, y: 3, vx: 0, vy: 0, r: BALL_R, color1: BALL_COLORS[0][0], color2: BALL_COLORS[0][1], spin: 0.3, seed: 500 },
+      { x: 3, y: 5, vx: 0, vy: 0, r: BALL_R, color1: BALL_COLORS[1][0], color2: BALL_COLORS[1][1], spin: -0.5, seed: 501 },
     ];
     sparks = [];
     for (let i = 0; i < 15; i++) {
@@ -198,22 +198,22 @@ export const bodyCreature: Experiment = {
 
   draw(ctx) {
     if (people.length === 0) {
-      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', '#888', 'center');
+      pxText(ctx, 'stand back so the camera can see your body!', w / 2, h / 2, '600 0.4px Sora, sans-serif', stone, 'center');
       return;
     }
 
     // Apple
     if (appleAlive) {
       rc.circle(appleX, appleY, APPLE_R * 2, {
-        fill: '#D32F2F', fillStyle: 'solid',
-        stroke: '#B71C1C', strokeWidth: 0.04, roughness: 1.3, seed: appleSeed,
+        fill: rose, fillStyle: 'solid',
+        stroke: terra, strokeWidth: 0.04, roughness: 1.3, seed: appleSeed,
       });
       rc.line(appleX, appleY - APPLE_R, appleX + 0.1, appleY - APPLE_R - 0.25, {
-        stroke: '#5D4037', strokeWidth: 0.05, roughness: 1.5, seed: appleSeed + 1,
+        stroke: charcoal, strokeWidth: 0.05, roughness: 1.5, seed: appleSeed + 1,
       });
       rc.arc(appleX + 0.1, appleY - APPLE_R - 0.15, 0.25, 0.15, 0, Math.PI, false, {
-        fill: '#4CAF50', fillStyle: 'solid',
-        stroke: '#388E3C', strokeWidth: 0.02, roughness: 1.2, seed: appleSeed + 2,
+        fill: sage, fillStyle: 'solid',
+        stroke: sage, strokeWidth: 0.02, roughness: 1.2, seed: appleSeed + 2,
       });
     }
 

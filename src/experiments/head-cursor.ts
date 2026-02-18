@@ -102,7 +102,7 @@ export const headCursor: Experiment = {
     // Head angle debug (show near cursor)
     if (tracking) {
       const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
-      pxText(ctx, `pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, cx, cy - 0.5, "0.2px monospace", "#888", "center");
+      pxText(ctx, `pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, cx, cy - 0.5, "0.2px monospace", stone, "center");
     }
   },
 };

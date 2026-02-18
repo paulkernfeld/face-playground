@@ -1,7 +1,7 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { rose, sage, honey, terra } from '../palette';
+import { rose, sage, honey, terra, cream, stone } from '../palette';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -130,7 +130,7 @@ export const blendshapeDebug: Experiment = {
         const { name, val } = active[i];
 
         // Label
-        pxText(ctx, name, LEFT, y + 0.22, "0.22px monospace", "#fff");
+        pxText(ctx, name, LEFT, y + 0.22, "0.22px monospace", cream);
 
         // Bar background
         const barX = LEFT + 3.0;
@@ -147,7 +147,7 @@ export const blendshapeDebug: Experiment = {
         }
 
         // Value
-        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22, "0.17px monospace", "#fff");
+        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22, "0.17px monospace", cream);
       }
     }
 
@@ -170,7 +170,7 @@ export const blendshapeDebug: Experiment = {
         const y = startY + 0.12 + i * 0.3;
         const { name, val } = maybeActive[i];
 
-        pxText(ctx, name, LEFT, y + 0.2, "0.2px monospace", "#ccc");
+        pxText(ctx, name, LEFT, y + 0.2, "0.2px monospace", stone);
 
         const barX = LEFT + 3.0;
         rc.rectangle(barX, y + 0.02, BAR_MAX, 0.22, {
@@ -184,7 +184,7 @@ export const blendshapeDebug: Experiment = {
           });
         }
 
-        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.2, "0.15px monospace", "#ccc");
+        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.2, "0.15px monospace", stone);
       }
     }
 
@@ -206,7 +206,7 @@ export const blendshapeDebug: Experiment = {
         if (y > h - 0.25) break;
         const [name, val] = all[i];
 
-        pxText(ctx, name, 2.75, y + ROW_H * 0.7, "0.15px monospace", val > 0.01 ? "#ccc" : "#555", "right");
+        pxText(ctx, name, 2.75, y + ROW_H * 0.7, "0.15px monospace", val > 0.01 ? stone : stone, "right");
 
         rc.rectangle(2.85, y + 0.02, BAR_MAX, ROW_H - 0.05, {
           fill: 'rgba(255,255,255,0.05)', fillStyle: 'solid', stroke: 'none',
@@ -224,7 +224,7 @@ export const blendshapeDebug: Experiment = {
     // Hint
     pxText(ctx,
       `[i] ${showAll ? "hide" : "show"} other blendshapes  |  ${latestBlendshapes.size} total`,
-      0.5, h - 0.25, "0.17px monospace", "#555",
+      0.5, h - 0.25, "0.17px monospace", stone,
     );
   },
 };
