@@ -92,7 +92,6 @@ btnBar.classList.add("hidden");
 btnBar.innerHTML = `
   <button id="btn-back">&#x2190; back${key("q")}</button>
   <button id="btn-debug">debug${key("v")}</button>
-  <button id="btn-screenshot">screenshot${key("s")}</button>
   <button id="btn-capture" class="hidden">capture${key("space")}</button>
 `;
 document.body.appendChild(btnBar);
@@ -102,14 +101,6 @@ document.getElementById("btn-back")!.addEventListener("click", () => {
 });
 document.getElementById("btn-debug")!.addEventListener("click", () => {
   if (currentExp) toggleDebug();
-});
-document.getElementById("btn-screenshot")!.addEventListener("click", () => {
-  if (currentExp) {
-    const link = document.createElement("a");
-    link.download = `face-${currentExp.name}-${Date.now()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  }
 });
 document.getElementById("btn-capture")!.addEventListener("click", () => {
   (window as any).__capture?.();
@@ -492,14 +483,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "v" && currentExp) {
     toggleDebug();
     return;
-  }
-
-  // Screenshot
-  if (e.key === "s" && !e.metaKey && !e.ctrlKey && currentExp) {
-    const link = document.createElement("a");
-    link.download = `face-${currentExp.name}-${Date.now()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
   }
 });
 
