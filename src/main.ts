@@ -25,14 +25,14 @@ import { experimentColors, honey, warning as warningColor, canvasBg } from "./pa
 const experiments: Experiment[] = [headCursor, faceChomp, bodyCreature, redLightGreenLight, ddr, yoga, posture, mindfulness];
 
 const experimentMeta = [
-  { icon: '🎯', desc: 'move a cursor with your nose', color: experimentColors[0] },
-  { icon: '😮', desc: 'pac-man, controlled with your face', color: experimentColors[1] },
-  { icon: '🧌', desc: 'a silly creature that follows your body', color: experimentColors[2] },
-  { icon: '🚦', desc: 'freeze when the light turns red!', color: experimentColors[3] },
-  { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: experimentColors[4] },
-  { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: experimentColors[5] },
-  { icon: '🪑', desc: 'gentle nudge when your posture drifts', color: experimentColors[6] },
-  { icon: '🧘', desc: 'close your eyes and be still', color: experimentColors[7] },
+  { icon: '\u{1F3AF}', desc: 'move a cursor with your nose', color: experimentColors[0] },
+  { icon: '\u{1F62E}', desc: 'pac-man, controlled with your face', color: experimentColors[1] },
+  { icon: '\u{1F9CC}', desc: 'a silly creature that follows your body', color: experimentColors[2] },
+  { icon: '\u{1F6A6}', desc: 'freeze when the light turns red!', color: experimentColors[3] },
+  { icon: '\u{1F3B5}', desc: 'rhythm game \u2014 match arrows with your head', color: experimentColors[4] },
+  { icon: '\u{1F9D8}\u200d\u2640\uFE0F', desc: 'match yoga poses with your body', color: experimentColors[5] },
+  { icon: '\u{1FA91}', desc: 'gentle nudge when your posture drifts', color: experimentColors[6] },
+  { icon: '\u{1F9D8}', desc: 'close your eyes and be still', color: experimentColors[7] },
 ];
 
 // -- DOM --
@@ -115,6 +115,29 @@ document.getElementById("btn-capture")!.addEventListener("click", () => {
   (window as any).__capture?.();
 });
 
+// -- Extra buttons management --
+let extraButtonEls: HTMLButtonElement[] = [];
+
+function addExtraButtons(exp: Experiment) {
+  removeExtraButtons();
+  if (!exp.extraButtons) return;
+  for (const btn of exp.extraButtons) {
+    const el = document.createElement("button");
+    el.textContent = `${btn.label}${key(btn.key)}`;
+    el.classList.add("extra-btn");
+    el.addEventListener("click", btn.onClick);
+    btnBar.appendChild(el);
+    extraButtonEls.push(el);
+  }
+}
+
+function removeExtraButtons() {
+  for (const el of extraButtonEls) {
+    el.remove();
+  }
+  extraButtonEls = [];
+}
+
 // -- Build menu --
 function showMenu() {
   currentExp?.cleanup?.();
@@ -127,6 +150,7 @@ function showMenu() {
     video.srcObject = null;
   }
 
+  removeExtraButtons();
   canvas.classList.add("hidden");
   hudEl.classList.add("hidden");
   btnBar.classList.add("hidden");
@@ -205,7 +229,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   // Show loading overlay
   loadingEl.classList.remove("hidden");
   loadingEl.innerHTML = `
-    <div class="loading-icon">📸</div>
+    <div class="loading-icon">\u{1F4F8}</div>
     <div class="loading-text">starting camera\u2026</div>`;
 
   // Init camera at lower res
@@ -228,7 +252,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
       msg = "couldn\u2019t access the camera";
     }
     loadingEl.innerHTML = `
-      <div class="loading-icon">📷</div>
+      <div class="loading-icon">\u{1F4F7}</div>
       <div class="loading-text">${msg}</div>
       <button class="camera-error-back">\u2190 back to menu</button>`;
     loadingEl.querySelector(".camera-error-back")!.addEventListener("click", showMenu);
@@ -276,6 +300,7 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   canvas.classList.remove("hidden");
   hudEl.classList.toggle("hidden", !showVideo);
   btnBar.classList.remove("hidden");
+  addExtraButtons(currentExp);
   resize();
 
   currentExp.setup(ctx, GAME_W, GAME_H);
@@ -500,6 +525,16 @@ document.addEventListener("keydown", (e) => {
     link.download = `face-${currentExp.name}-${Date.now()}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
+  }
+
+  // Extra experiment buttons (keyboard shortcuts)
+  if (currentExp?.extraButtons) {
+    for (const btn of currentExp.extraButtons) {
+      if (e.key === btn.key) {
+        btn.onClick();
+        return;
+      }
+    }
   }
 });
 

@@ -28,4 +28,6 @@ export interface Experiment {
   demo?(): void;
   /** Called when leaving the experiment (e.g. back to menu). Stop audio, timers, etc. */
   cleanup(): void;
+  /** Extra buttons to add to the touch bar while this experiment is active. */
+  extraButtons?: Array<{ label: string; key: string; onClick: () => void }>;
 }
