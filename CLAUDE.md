@@ -63,6 +63,9 @@ interface Experiment {
 - **Heartbeat detector**: Use rPPG (remote photoplethysmography) — measure subtle redness/blueness changes in face skin to detect pulse (see Verkruysse et al. / Brown University research)
 - **Mindfulness**: Close your eyes and stay still for a set duration, detect via blendshapes
 - **Face yoga**: Guided facial exercises — open mouth wide, puff cheeks, raise eyebrows, etc.
+- **Posture check CLI command**: Launch Chrome, check posture against saved calibration, report back
+- **Shoulder shrugging activity**: Detect/guide shoulder raises and releases via pose landmarks
+- **Eye blinking activity**: Track blink rate and patterns via blendshapes
 
 ## TODO
 
