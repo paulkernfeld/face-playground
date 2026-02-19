@@ -97,7 +97,6 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
 | **Creature: fingers** — detailed hand shapes | D | Current 3-landmark capsules look meh. Options: (1) integrate MediaPipe Hand Landmarker (21 landmarks/hand, all finger joints) for detailed fingers, (2) keep simple but improve aesthetics. Design decision needed. |
-| **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | I | Implementation exists on `feat/creature-face` branch. Needs PNG-based verification: capture a fixture with face visible, inject both pose + FaceMesh landmarks, render with overlay-demo. Verify: **(d)** screenshot showing face contour polygon instead of ellipse |
 | **Research open source related work** — face-tracking games, body-tracking art, WebRTC experiments | D | Survey and document in CLAUDE.md experiment ideas |
 | **Research commercial competitors** — existing face/body tracking apps and games | D | Survey and document findings |
 | **RAII async/await refactor** — structured cleanup with `withExperiment(fn)` pattern | D | Replace manual cleanup() with scoped resource management. Architectural design needed |
