@@ -72,7 +72,7 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 **Roles** (match the D→I→V flow):
 - **Design (D→I)**: Ask the user the right questions to fully spec out the plan. Once clear, update the TODO row to **I** with a concrete plan.
 - **Implement (I→V)**: Create a worktree (`.worktrees/<feature-slug>/`) and implement there. Verification link must point to the worktree's dev server (e.g. `http://localhost:5200/?demo=3`). Move to **V**. Ralph loop end condition: every implemented feature is in **V** status with a clickable verification link (or passing test), committed in its worktree.
-- **QA (V→done)**: Open the verification link, ask if it's good. If good, merge the worktree branch into master, delete the worktree, and remove the TODO row. If not, move back to **I** with notes. Ralph loop end condition: no V-status items remain, all merged to master, worktrees cleaned up.
+- **QA (V→done)**: Tell the user **what to look for** first (e.g. "left arm should be charcoal, right arm sage green"), **then** open the link. If good, merge the worktree branch into master, delete the worktree, and remove the TODO row. If not, move back to **I** with notes. Ralph loop end condition: no V-status items remain, all merged to master, worktrees cleaned up.
 
 **Verification hierarchy** — use the cheapest feasible method. Human time >> Claude time.
 - **(a)** Node unit test — `npx tsx tests/foo.test.ts`
@@ -85,24 +85,24 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | Feature | St | Plan |
 |---------|----|------|
 | **Pixel-scale coordinates** — replace 16×9 game-units with pixel-scale coords; fixes fillText + rough.js | D | Architectural scope discussion needed |
-| **Pitch/yaw swapped** — left/right shows as pitch, roll shows as yaw | I | Fix Euler decomposition in angle-test.ts + main.ts. Verify: **(b)** existing `?angleTest` Playwright fixtures |
 | **Chomp: fruit bounces off you** when mouth closed | D | "Maybe too evil" — design question |
 | **UI: evaluate screenshot button** | D | User usage opinion needed |
 | **Offline/PWA** — airplane mode on phone | D | Scope/priority decision |
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
 | **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
-| **Yoga: alignment visibility** — charcoal unaligned, colored aligned, full limb segments | I | Rendering change in yoga.ts. Verify: **(d)** `?demo=6` screenshot |
 | **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | I | Investigate compensation: hit window expansion, latency offset, or visual feedback timing |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
 | **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
-| **Creature: fingers** — mitten shapes at wrist endpoints | I | Add hand shapes in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
+| **Creature: fingers** — sausage fingers from real landmarks | I | Draw capsules from wrist to each fingertip (pinky 17/18, index 19/20, thumb 21/22). Needs new fixture with hand close to camera. Verify: **(d)** `?demo=3` screenshot + overlay-demo with new fixture |
 | **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | I | Pass FaceMesh landmarks to drawPerson(), draw face contour polygon. Verify: **(d)** `npx tsx scripts/overlay-demo.ts 3 yoga-mountain` |
 | **Research open source related work** — face-tracking games, body-tracking art, WebRTC experiments | D | Survey and document in CLAUDE.md experiment ideas |
 | **Research commercial competitors** — existing face/body tracking apps and games | D | Survey and document findings |
 | **RAII async/await refactor** — structured cleanup with `withExperiment(fn)` pattern | D | Replace manual cleanup() with scoped resource management. Architectural design needed |
 | **Adaptive MediaPipe framerate** — some experiments (e.g. posture, mindfulness) don't need 30fps tracking; throttle to save CPU | D | API design: per-experiment hint or automatic detection |
+| **Quick capture mode** — `?capture` currently requires timer; add instant-capture option | D | UX: button or keypress to capture immediately without countdown |
+| **Privacy containment** — prevent Claude from seeing room contents via camera→screenshot pipeline | D | Risk: open browser → start camera → screenshot → Claude sees room. Need guardrails (e.g. never screenshot video feed, only canvas overlay; or strip camera frames from screenshots) |
 | Sent to friends for feedback | D | Waiting for responses |
 
 ## Philosophy
