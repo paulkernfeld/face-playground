@@ -39,9 +39,86 @@ export const mindfulness: Experiment = {
     let breathPhase: number; // 0..1 cycling for breathing animation
     let peakTime: number; // best session time
     let interruptReason: string; // why the session was interrupted
+    let prevPhase: Phase; // track phase transitions for audio
+
+    // Audio state
+    let audioCtx: AudioContext | null = null;
+
+    function getAudioCtx(): AudioContext | null {
+      if (!audioCtx) {
+        try {
+          audioCtx = new AudioContext();
+        } catch {
+          return null;
+        }
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Gentle sine sweep — soft start tone when entering active phase
+    function playStartTone() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(330, t);
+      osc.frequency.exponentialRampToValueAtTime(440, t + 0.3);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.07, t + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.6);
+    }
+
+    // Soft damped alert — interrupt tone when leaving active phase
+    function playInterruptTone() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(380, t);
+      osc.frequency.exponentialRampToValueAtTime(260, t + 0.15);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    }
+
+    // Bright ding — completion tone
+    function playCompleteTone() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      // Two layered oscillators for a richer ding
+      for (const freq of [660, 880]) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.2, t + 0.1);
+        gain.gain.setValueAtTime(0.08, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.8);
+      }
+    }
 
     function reset() {
       phase = 'waiting';
+      prevPhase = 'waiting';
       eyesClosed = false;
       isStill = true;
       closedStillTime = 0;
@@ -60,6 +137,10 @@ export const mindfulness: Experiment = {
     }
 
     return {
+      extraButtons: [
+        { label: 'restart', key: 'r', onClick: () => { reset(); hasHadFace = true; } },
+      ],
+
       setup(ctx: CanvasRenderingContext2D, ww: number, hh: number) {
         w = ww;
         h = hh;
@@ -106,11 +187,7 @@ export const mindfulness: Experiment = {
 
         // Phase logic
         if (phase === 'complete') {
-          // Stay in complete until eyes open (to restart)
-          if (!eyesClosed) {
-            reset();
-            hasHadFace = true;
-          }
+          // Locked — don't auto-reset. Only reset() via restart button/key.
           return;
         }
 
@@ -140,6 +217,18 @@ export const mindfulness: Experiment = {
           }
           closedStillTime = 0;
           phase = 'waiting';
+        }
+
+        // Play audio on phase transitions
+        if (phase !== prevPhase) {
+          if (phase === 'active' && prevPhase === 'waiting') {
+            playStartTone();
+          } else if (phase === 'waiting' && prevPhase === 'active') {
+            playInterruptTone();
+          } else if (phase === 'complete') {
+            playCompleteTone();
+          }
+          prevPhase = phase;
         }
       },
 
@@ -172,8 +261,15 @@ export const mindfulness: Experiment = {
             "600 0.6px Fredoka, sans-serif", sage, "center");
           pxText(ctx, "well done", cx, cy + 2.5,
             "600 0.35px Sora, sans-serif", charcoal, "center");
-          pxText(ctx, "open your eyes to try again", cx, cy + 3.1,
-            "0.2px Sora, sans-serif", stone, "center");
+
+          // Show best time
+          if (peakTime > 0.5) {
+            pxText(ctx, `best: ${peakTime.toFixed(1)}s`, cx, cy + 3.1,
+              "0.2px Sora, sans-serif", stone, "center");
+          }
+
+          pxText(ctx, "press restart to try again", cx, cy + 3.6,
+            "0.18px Sora, sans-serif", stone, "center");
           return;
         }
 
@@ -265,6 +361,7 @@ export const mindfulness: Experiment = {
       demo() {
         // Show mid-session state: 5 seconds in, eyes closed, still
         phase = 'active';
+        prevPhase = 'active';
         eyesClosed = true;
         isStill = true;
         closedStillTime = 5.0;
@@ -276,7 +373,10 @@ export const mindfulness: Experiment = {
       },
 
       cleanup() {
-        // No resources to release (no audio, no event listeners)
+        if (audioCtx) {
+          audioCtx.close();
+          audioCtx = null;
+        }
       },
     };
   })(),
