@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — TypeScript check + Vite production build
 - `npx tsc --noEmit` — type-check without emitting
 - `?demo=N` URL param — render experiment N (1-indexed) with fake data, no camera needed (for screenshots/visual verification)
+- `?play=N` URL param — run experiment N live with no camera (face=null), for Playwright tests that need the game loop running
+- `?exp=N` URL param — jump straight into experiment N with camera (skips menu click), for quick human verification
 - `?capture&prompt=<name>` — capture raw video frame to `fixtures/<name>.png` (toggle video with `v`, press Space to save)
 - `?angleTest` — minimal FaceMesh page that writes pitch/yaw to `#angles` DOM element (used by Playwright tests)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
@@ -40,7 +42,7 @@ interface Experiment {
 
 **Shared body creature rendering** (`src/experiments/creature-shared.ts`): Extracted `PersonState`, `drawPerson()`, `updatePeople()`, pupil physics, sparks, palettes, and landmark constants. Body-tracking experiments should import from here rather than duplicating creature rendering code.
 
-**DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter). 120 BPM kick on every beat, arrows every other beat.
+**DDR rhythm experiment** (`src/experiments/ddr.ts`): Uses Web Audio API with look-ahead scheduling for precise beat timing. Audio clock (`audioCtx.currentTime`) is the master clock — all arrow timing derives from it. Don't try to play sounds from rAF callbacks (causes jitter). Arrow pattern in `src/ddr-pattern.ts`, detection matches head direction (pitch for up/down, yaw for left/right).
 
 **Web Audio sound effects**: `face-chomp.ts` and `body-creature.ts` both have a `playDing()` function (synthesized sine sweep). If more experiments need sounds, extract to a shared module.
 
@@ -68,7 +70,13 @@ interface Experiment {
 
 **Status**: **D** = needs design input from user, **I** = shovel-ready for Claude, **V** = done, needs user verification
 
-**Verification**: (a) Node unit test, (b) Playwright + existing fixtures, (c) Playwright + new fixture, (d) `?demo=N` screenshot, (e) manual playtest <10s, (f) full QA
+**Verification hierarchy** — use the cheapest feasible method. Human time >> Claude time.
+- **(a)** Node unit test — `npx tsx tests/foo.test.ts`
+- **(b)** Playwright + existing fixtures — `npx playwright test tests/foo.spec.ts`
+- **(c)** Playwright + new fixture
+- **(d)** `?demo=N` screenshot (static frame, human reviews)
+- **(e)** `?exp=N` playtest <10s with camera — **V-status items must include a clickable link**
+- **(f)** Full QA session
 
 | Feature | St | Plan |
 |---------|----|------|
@@ -80,8 +88,8 @@ interface Experiment {
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
 | **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
 | **Yoga: alignment visibility** — charcoal unaligned, colored aligned, full limb segments | I | Rendering change in yoga.ts. Verify: **(d)** `?demo=6` screenshot |
-| **DDR: fixed repeating pattern** — up,center,down,center,left,right,left,right loop | V | Extract sequence generator, hardcode pattern. Verify: **(a)** unit test that sequence produces correct pattern |
-| **DDR: nod detection feels off** | D | Needs user to describe the problem more specifically |
+| **DDR: fixed pattern + directional detection** — arrows cycle up/down/left/right, head direction matching | V | **(a)** `npx tsx tests/ddr-pattern.test.ts` + **(b)** `npx playwright test tests/ddr-wiring.spec.ts` + **(e)** [`?exp=5`](http://localhost:5173/?exp=5) |
+| **DDR: detection feels laggy** — FaceMesh latency makes timing feel off | I | Investigate compensation: hit window expansion, latency offset, or visual feedback timing |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
 | **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
@@ -119,8 +127,11 @@ interface Experiment {
 - Node 21.7.2 (engine warnings are expected and harmless)
 - Camera resolution intentionally 640x480 — FaceMesh downscales internally, lower res improves FPS
 - **No multi-line bash scripts** — keep each Bash tool call to a single simple command. Don't chain with `&&`, don't use `sleep`, don't combine background processes with waits. If commands need to run sequentially, use separate Bash calls.
-- **Dev server for screenshots** — use `npm run dev -- --port 5199` (not `npx vite`) to start the dev server in background. `npm run dev` is allowlisted; raw `npx vite` is not.
+- **Dev server for screenshots** — use `Bash(npm run dev -- --port 5199, run_in_background=true)` (no `&`). The `run_in_background` param avoids permission prompts; `&` suffix and raw `npx vite` both trigger prompts.
+- **No `curl`** — too broad to whitelist. To check if a local server is up, use `lsof -ti :5199` (checks if anything is listening on the port, no HTTP request).
 - **No `git -C`** — use `cd` to switch directories instead. `git -C` triggers extra approval prompts.
 - **`verbatimModuleSyntax` enabled** — use `import type { Foo }` for type-only imports, or `tsc` will error
 - **No `ctx.fillText` in game-unit space** — sub-pixel font sizes (anything under ~1px) silently fail. Use `console.log` for debug output, or `pxText()` helper for user-facing text. See TODO for planned pixel-coord fix.
+- **AudioContext in Playwright** — headless Chrome suspends AudioContext and `currentTime` won't advance. Use `page.addInitScript` to override the constructor with auto-resume. Use `?play=N` instead of pressing menu keys, since `enterExperiment()` blocks on FaceMesh model loading.
+- **Exposing game state for tests** — pattern: `(window as any).__ddrArrows = arrows` in game code, then `page.evaluate(() => (window as any).__ddrArrows)` in Playwright. Lightweight way to verify wiring without parsing canvas.
 - **Playwright screenshots** — save to `.screenshots/` directory (gitignored), e.g. `filename: ".screenshots/demo.png"`

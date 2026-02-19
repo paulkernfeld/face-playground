@@ -508,6 +508,45 @@ if (angleTestParam !== null) {
 } else if (captureParam !== null) {
   document.getElementById("btn-capture")!.classList.remove("hidden");
   enterExperiment(captureExperiment);
+} else if (params.get("exp") !== null) {
+  const idx = parseInt(params.get("exp")!) - 1;
+  if (idx >= 0 && idx < experiments.length) {
+    enterExperiment(idx);
+  } else {
+    showMenu();
+  }
+} else if (params.get("play") !== null) {
+  const idx = parseInt(params.get("play")!) - 1;
+  if (idx >= 0 && idx < experiments.length) {
+    // Play mode: run experiment live with no camera (face=null)
+    currentExp = experiments[idx];
+    menuEl.classList.add("hidden");
+    canvas.classList.remove("hidden");
+    resize();
+    currentExp.setup(ctx, GAME_W, GAME_H);
+    let lastTime = performance.now();
+    const loop = () => {
+      if (!currentExp) return;
+      const now = performance.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      currentExp.update(null, dt);
+      ctx.fillStyle = canvasBg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(gameX, gameY);
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      ctx.rect(0, 0, GAME_W, GAME_H);
+      ctx.clip();
+      currentExp.draw(ctx, GAME_W, GAME_H, false);
+      ctx.restore();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  } else {
+    showMenu();
+  }
 } else if (demoParam !== null) {
   const idx = parseInt(demoParam) - 1;
   if (idx >= 0 && idx < experiments.length) {

@@ -14,8 +14,9 @@ interface Arrow {
   hitTime?: number;
 }
 
-// Head pitch threshold for "nodding down" (radians)
-const NOD_THRESH = 0.25;
+// Head movement thresholds (radians) — generous for fun
+const NOD_THRESH = 0.15;
+const YAW_THRESH = 0.12;
 
 // Arrow travel time (2 bars at 60 BPM = 8 beats = 8s)
 const TRAVEL_TIME = 8;
@@ -155,6 +156,18 @@ let feedbackColor = '';
 let w = 16, h = 9;
 let rc: GameRoughCanvas;
 let currentPitch = 0;
+let currentYaw = 0;
+
+/** Check if current head pose matches the arrow direction. Generous thresholds. */
+function isDirectionMatch(dir: ArrowDirection): boolean {
+  switch (dir) {
+    case 'down':  return currentPitch > NOD_THRESH;       // nod down
+    case 'up':    return currentPitch < -NOD_THRESH;      // look up
+    case 'left':  return currentYaw > YAW_THRESH;         // turn left
+    case 'right': return currentYaw < -YAW_THRESH;        // turn right
+    case 'center': return true;
+  }
+}
 
 function showFeedback(msg: string, color: string) {
   feedbackMsg = msg;
@@ -170,6 +183,8 @@ function spawnArrowOnBeat(beat: number) {
     targetTime: targetAudioTime - audioStartTime,
     direction: getArrowDirection(beat),
   });
+  // Expose for Playwright tests
+  (window as any).__ddrArrows = arrows;
 }
 
 /** Rotation angle for each arrow direction (points the arrow in the movement direction). */
@@ -233,9 +248,10 @@ export const ddr: Experiment = {
 
     scheduleBeats();
 
-    // Track current head pitch
+    // Track current head pose
     if (face) {
       currentPitch = face.headPitch;
+      currentYaw = face.headYaw;
     }
 
     // Judge arrows at their target time
@@ -247,9 +263,9 @@ export const ddr: Experiment = {
           arrow.hit = 'hit';
           arrow.hitTime = t;
         } else {
-          // Active beat — is head nodded down?
-          const nodding = currentPitch > NOD_THRESH;
-          if (nodding) {
+          // Check if head is moving in the arrow's direction
+          const match = isDirectionMatch(arrow.direction);
+          if (match) {
             arrow.hit = 'hit';
             arrow.hitTime = t;
             score += 100 * (1 + Math.floor(combo / 10));
@@ -423,6 +439,6 @@ export const ddr: Experiment = {
     }
 
     // Instructions at bottom
-    pxText(ctx, "nod your head on the beat", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
+    pxText(ctx, "move your head to match the arrows", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
   },
 };
