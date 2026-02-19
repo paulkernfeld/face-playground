@@ -365,7 +365,7 @@ async function runLoop() {
     }
 
     // Injected poses for testing (e.g. overlay-demo.ts script)
-    const injectedPoses = (window as any).__overridePoses as { x: number; y: number; z?: number }[][] | undefined;
+    const injectedPoses = (window as any).__overridePoses as { x: number; y: number; z: number }[][] | undefined;
     if (currentExp.updatePose && injectedPoses) {
       currentExp.updatePose(injectedPoses, dt);
     }
