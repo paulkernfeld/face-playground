@@ -63,27 +63,33 @@ interface Experiment {
 
 ## TODO
 
-**Remove items from this list when completed** — don't leave stale TODOs.
+**Remove rows when completed** — don't leave stale TODOs.
 
-- **Switch to pixel-scale coordinates**: Replace 16x9 game-unit system with pixel-scale coords (~100s-1000s). Fixes two problems at once: (1) `ctx.fillText` silently fails at sub-pixel font sizes in real browsers, (2) rough.js hardcoded offsets explode at small scales, eliminating need for `GameRoughCanvas` wrapper. All experiments + main.ts need updating. Landmarks would be delivered in pixel coords instead of game units.
-- **Pitch/yaw swapped**: Turning face left/right shows as pitch, rolling face shows as yaw. -pitch = angle face right (wrong). Angling head left = positive yaw (wrong). Fix head pose math. Use `?fixture` mode + saved fixtures to verify.
-- **Chomp: fruit bounces off you** when mouth is closed (maybe too evil but interesting)
-- **UI: evaluate screenshot button** — is it used enough to justify UI space?
-- **Offline/PWA**: Make it work on phone in airplane mode (service worker / cache FaceMesh model + WASM)
-- **Light background**: Switch from dark canvas bg to light — users need light for camera tracking anyway
-- **Yoga: use angles not positions** — match joint angles instead of absolute body position, so it works regardless of where you stand
-- **Yoga: alignment visibility** — unaligned body parts render in charcoal, aligned parts in color; show full limb segments (arm, not just elbow)
-- **DDR: fixed repeating pattern** — replace random arrows with: up, center, down, center, left, right, left, right (loop forever)
-- **DDR: nod detection feels off** — timing/threshold for head nod detection doesn't feel right, needs tuning
-- **DDR: camera angle calibration** — camera being too low/high shifts the neutral pitch; add initial calibration step to establish baseline
-- **Mindfulness experiment** — simple: close your eyes and stay still, detect via blendshapes
-- **Warning system refactor** — chomp's "open your mouth" warning may overlap the main file's face-visibility warning. Refactor so main.ts sends errors/warnings down to experiments via `FaceData` or a callback, and experiments can optionally render them. Face-visibility warning should override game-level warnings.
-- **iPad**: field of view seems much larger than desktop — check camera resolution handling
-- **Creature: thicker limbs** — limbs are too spindly/skeletal, gives a creepy look. Thicken arms and legs so creatures feel more like chunky cartoon characters
-- **Creature: fingers** — show fingers/hands instead of just wrist endpoints, even simple mitten shapes would help
-- **Creature: face shape** — draw a face outline/head shape, not just floating eyes. Round head or oval that follows the pose
-- **Experiment cleanup**: Ensure every experiment cleans up after itself (audio contexts, timers, event listeners) when returning to menu
-- Sent to friends for feedback — waiting for responses
+**Status**: **D** = needs design input from user, **I** = shovel-ready for Claude, **V** = done, needs user verification
+
+**Verification**: (a) Node unit test, (b) Playwright + existing fixtures, (c) Playwright + new fixture, (d) `?demo=N` screenshot, (e) manual playtest <10s, (f) full QA
+
+| Feature | St | Plan |
+|---------|----|------|
+| **Pixel-scale coordinates** — replace 16×9 game-units with pixel-scale coords; fixes fillText + rough.js | D | Architectural scope discussion needed |
+| **Pitch/yaw swapped** — left/right shows as pitch, roll shows as yaw | I | Fix Euler decomposition in angle-test.ts + main.ts. Verify: **(b)** existing `?angleTest` Playwright fixtures |
+| **Chomp: fruit bounces off you** when mouth closed | D | "Maybe too evil" — design question |
+| **UI: evaluate screenshot button** | D | User usage opinion needed |
+| **Offline/PWA** — airplane mode on phone | D | Scope/priority decision |
+| **Light background** — dark→light canvas bg | D | Affects all experiments visually |
+| **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
+| **Yoga: alignment visibility** — charcoal unaligned, colored aligned, full limb segments | I | Rendering change in yoga.ts. Verify: **(d)** `?demo=6` screenshot |
+| **DDR: fixed repeating pattern** — up,center,down,center,left,right,left,right loop | I | Extract sequence generator, hardcode pattern. Verify: **(a)** unit test that sequence produces correct pattern |
+| **DDR: nod detection feels off** | D | Needs user to describe the problem more specifically |
+| **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
+| **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
+| **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
+| **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
+| **Creature: thicker limbs** — chunky cartoon, not spindly | I | Increase lineWidth in creature-shared.ts drawPerson(). Verify: **(d)** `?demo=3` screenshot |
+| **Creature: fingers** — mitten shapes at wrist endpoints | I | Add hand shapes in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
+| **Creature: face shape** — head outline, not floating eyes | I | Add oval/circle head in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
+| **Experiment cleanup** — audio contexts, timers, listeners on menu return | I | Audit all experiments, add teardown. Verify: **(b)** Playwright test: open DDR → press q → check AudioContext closed |
+| Sent to friends for feedback | D | Waiting for responses |
 
 ## Philosophy
 
