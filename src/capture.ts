@@ -5,7 +5,7 @@ import type { PersonState } from "./experiments/creature-shared";
 import { updatePeople, drawPerson } from "./experiments/creature-shared";
 
 // Capture tool for saving raw video frames as fixture images.
-// Activate via ?capture URL param. Press Space to save raw video frame to fixtures/.
+// Activate via ?capture URL param. Press Space to instantly save frame to fixtures/.
 
 let w = 16, h = 9;
 let rc: GameRoughCanvas;
@@ -13,8 +13,6 @@ let people: PersonState[] = [];
 let flashUntil = 0;
 let flashMsg = '';
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
-let countdownEnd = 0; // timestamp when countdown fires (0 = inactive)
-const COUNTDOWN_SECS = 10;
 
 export const captureExperiment: Experiment = {
   name: "capture",
@@ -48,32 +46,22 @@ export const captureExperiment: Experiment = {
       const label = (win.__capturePrompt || 'capture').replace(/\s+/g, '-').toLowerCase();
       await fetch(`/api/fixture/${label}.png`, { method: 'PUT', body: pngBlob });
 
-      flashUntil = performance.now() + 400;
+      flashUntil = performance.now() + 1000;
       flashMsg = `saved fixtures/${label}.png`;
     };
 
-    // Keyboard: Space = start countdown (or cancel if running)
+    // Keyboard: Space = instant capture
     if (keyHandler) document.removeEventListener('keydown', keyHandler);
     keyHandler = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        if (countdownEnd > 0) {
-          countdownEnd = 0; // cancel
-        } else {
-          countdownEnd = performance.now() + COUNTDOWN_SECS * 1000;
-        }
+        win.__capture?.();
       }
     };
     document.addEventListener('keydown', keyHandler);
   },
 
-  update() {
-    // Fire capture when countdown reaches zero
-    if (countdownEnd > 0 && performance.now() >= countdownEnd) {
-      countdownEnd = 0;
-      (window as any).__capture?.();
-    }
-  },
+  update() {},
 
   updatePose(poses: Landmarks[], dt: number) {
     updatePeople(poses, people, dt, w);
@@ -102,24 +90,27 @@ export const captureExperiment: Experiment = {
       pxText(ctx, `saving as: ${prompt}.png`, w / 2, 2.2, "0.3px sans-serif", "#888", "center");
     }
 
-    // Countdown display
-    if (countdownEnd > 0) {
-      const remaining = Math.ceil((countdownEnd - now) / 1000);
-      pxText(ctx, `${remaining}`, w / 2, h / 2, "bold 2px sans-serif", "#FFD93D", "center");
-      pxText(ctx, "Space = cancel", w / 2, h / 2 + 1.5, "0.25px sans-serif", "#666", "center");
-    } else {
-      // Instructions
-      pxText(ctx, `Space = ${COUNTDOWN_SECS}s timer then capture`, w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
-      pxText(ctx, "v = toggle video feed", w / 2, h / 2 + 0.6, "0.25px sans-serif", "#666", "center");
-    }
+    // Instructions
+    pxText(ctx, "Space = capture instantly", w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
+    pxText(ctx, "v = toggle video feed", w / 2, h / 2 + 0.6, "0.25px sans-serif", "#666", "center");
 
-    // Capture flash
+    // Capture flash + filename overlay (1s)
     if (now < flashUntil) {
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.fillRect(0, 0, w, h);
-      pxText(ctx, flashMsg, w / 2, h - 1.5, "bold 0.4px sans-serif", "#0f0", "center");
+      const elapsed = 1 - (flashUntil - now) / 1000;
+      // White flash fades quickly (first 200ms), filename stays for 1s
+      const flashAlpha = elapsed < 0.2 ? 0.4 * (1 - elapsed / 0.2) : 0;
+      if (flashAlpha > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+      pxText(ctx, flashMsg, w / 2, h - 1.5, "bold 0.35px sans-serif", "#0f0", "center");
     }
   },
 
-  cleanup() {},
+  cleanup() {
+    if (keyHandler) {
+      document.removeEventListener('keydown', keyHandler);
+      keyHandler = null;
+    }
+  },
 };
