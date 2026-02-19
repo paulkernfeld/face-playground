@@ -69,6 +69,11 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 
 **Status**: **D** = needs design input from user, **I** = shovel-ready for Claude, **V** = done, needs user verification
 
+**Roles** (match the D→I→V flow):
+- **Design (D→I)**: Ask the user the right questions to fully spec out the plan. Once clear, update the TODO row to **I** with a concrete plan.
+- **Implement (I→V)**: Take a feature with a clear plan and implement it. Return a **single clickable link** if any human verification is needed. Move to **V**.
+- **QA (V→done)**: Show the verification link and ask if it's good. If good, remove the TODO row. If not, move it back to **I** with notes on what's wrong. Ralph loop end condition: no V-status items remain and all changes are granularly committed.
+
 **Verification hierarchy** — use the cheapest feasible method. Human time >> Claude time.
 - **(a)** Node unit test — `npx tsx tests/foo.test.ts`
 - **(b)** Playwright + existing fixtures — `npx playwright test tests/foo.spec.ts`
@@ -87,20 +92,17 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
 | **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
 | **Yoga: alignment visibility** — charcoal unaligned, colored aligned, full limb segments | I | Rendering change in yoga.ts. Verify: **(d)** `?demo=6` screenshot |
-| **DDR: fixed pattern + directional detection** — arrows cycle up/down/left/right, head direction matching | V | **(a)** `npx tsx tests/ddr-pattern.test.ts` + **(b)** `npx playwright test tests/ddr-wiring.spec.ts` + **(e)** [`?exp=5`](http://localhost:5173/?exp=5) |
-| **DDR: detection feels laggy** — FaceMesh latency makes timing feel off | I | Investigate compensation: hit window expansion, latency offset, or visual feedback timing |
+| **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | I | Investigate compensation: hit window expansion, latency offset, or visual feedback timing |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
 | **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
-| **Creature: thicker limbs** — chunky cartoon, not spindly | V | Filled capsule limbs (sausage shapes) with charcoal outlines, solid body fill, bigger joints. Verify: **(d)** [`?demo=3`](http://localhost:5173/?demo=3) screenshot |
 | **Creature: fingers** — mitten shapes at wrist endpoints | I | Add hand shapes in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
-| **Creature: face shape** — head outline, not floating eyes | V | Added head ellipse behind googly eyes + ellipse() to GameRoughCanvas. Verify: **(d)** [`?demo=3`](http://localhost:5173/?demo=3) screenshot |
-| **Experiment cleanup** — audio contexts, timers, listeners on menu return | V | Added cleanup() to ddr, face-chomp, body-creature (close AudioContext). Verify: **(b)** Playwright test: open DDR → press q → check AudioContext closed |
 | **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | I | Pass FaceMesh landmarks to drawPerson(), draw face contour polygon. Verify: **(d)** `npx tsx scripts/overlay-demo.ts 3 yoga-mountain` |
 | **Research open source related work** — face-tracking games, body-tracking art, WebRTC experiments | D | Survey and document in CLAUDE.md experiment ideas |
 | **Research commercial competitors** — existing face/body tracking apps and games | D | Survey and document findings |
 | **RAII async/await refactor** — structured cleanup with `withExperiment(fn)` pattern | D | Replace manual cleanup() with scoped resource management. Architectural design needed |
+| **Adaptive MediaPipe framerate** — some experiments (e.g. posture, mindfulness) don't need 30fps tracking; throttle to save CPU | D | API design: per-experiment hint or automatic detection |
 | Sent to friends for feedback | D | Waiting for responses |
 
 ## Philosophy
