@@ -2,7 +2,7 @@ import type { Experiment, FaceData } from "../types";
 import type { ArrowDirection } from "../ddr-pattern";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { teal, rose, honey, charcoal, stone, cream } from '../palette';
+import { teal, rose, honey, charcoal, stone, cream, sky, lavender } from '../palette';
 import { getArrowDirection } from '../ddr-pattern';
 
 interface Arrow {
@@ -28,6 +28,12 @@ const BEAT_INTERVAL = 60 / BPM; // 0.5s
 // How far ahead to schedule audio (seconds)
 const SCHEDULE_AHEAD = 0.2;
 
+// Calibration duration in seconds
+const CALIBRATION_DURATION = 3;
+
+// localStorage key for saved calibration
+const CALIBRATION_KEY = 'ddr-calibration';
+
 // --- Web Audio ---
 let audioCtx: AudioContext | null = null;
 let audioStartTime = 0;
@@ -35,6 +41,17 @@ let scheduledUpToBeat = 0;
 let nextSpawnBeat = 1;
 // Track which arrows we've already judged at their beat
 let nextJudgeBeat = 1;
+
+// --- Calibration state ---
+let calibrating = false;
+let calibrationStartTime = 0; // performance.now() when calibration started
+let calibrationSamples: { pitch: number; yaw: number }[] = [];
+let baselinePitch = 0;
+let baselineYaw = 0;
+let gameStarted = false; // true once calibration is done and game is running
+
+// --- Key handler ---
+let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function ensureAudio(): AudioContext {
   if (!audioCtx) {
@@ -74,42 +91,51 @@ function scheduleKick(atTime: number, accent: boolean) {
   osc.stop(atTime + 0.2);
 }
 
-function playHit() {
+/** Schedule a hit sound on the next beat for clearer rhythmic feedback. */
+function scheduleHitOnNextBeat() {
   const ctx = ensureAudio();
-  const t = ctx.currentTime;
+  // Find the next beat time after now
+  const currentGameTime = now();
+  const currentBeat = Math.ceil(currentGameTime / BEAT_INTERVAL);
+  const nextBeatAudioTime = beatTime(currentBeat);
+  const atTime = Math.max(nextBeatAudioTime, ctx.currentTime + 0.01);
 
   const osc = ctx.createOscillator();
   osc.type = 'triangle';
-  osc.frequency.setValueAtTime(880, t);
-  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.05);
+  osc.frequency.setValueAtTime(880, atTime);
+  osc.frequency.exponentialRampToValueAtTime(1200, atTime + 0.05);
 
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.15, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  gain.gain.setValueAtTime(0.15, atTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, atTime + 0.1);
 
   osc.connect(gain);
   gain.connect(ctx.destination);
-  osc.start(t);
-  osc.stop(t + 0.15);
+  osc.start(atTime);
+  osc.stop(atTime + 0.15);
 }
 
-function playMiss() {
+/** Schedule a miss sound on the next beat for clearer rhythmic feedback. */
+function scheduleMissOnNextBeat() {
   const ctx = ensureAudio();
-  const t = ctx.currentTime;
+  const currentGameTime = now();
+  const currentBeat = Math.ceil(currentGameTime / BEAT_INTERVAL);
+  const nextBeatAudioTime = beatTime(currentBeat);
+  const atTime = Math.max(nextBeatAudioTime, ctx.currentTime + 0.01);
 
   const osc = ctx.createOscillator();
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(200, t);
-  osc.frequency.exponentialRampToValueAtTime(80, t + 0.15);
+  osc.frequency.setValueAtTime(200, atTime);
+  osc.frequency.exponentialRampToValueAtTime(80, atTime + 0.15);
 
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.12, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  gain.gain.setValueAtTime(0.12, atTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, atTime + 0.2);
 
   osc.connect(gain);
   gain.connect(ctx.destination);
-  osc.start(t);
-  osc.stop(t + 0.25);
+  osc.start(atTime);
+  osc.stop(atTime + 0.25);
 }
 
 function scheduleBeats() {
@@ -155,8 +181,21 @@ let feedbackTime = 0;
 let feedbackColor = '';
 let w = 16, h = 9;
 let rc: GameRoughCanvas;
-let currentPitch = 0;
-let currentYaw = 0;
+let currentPitch = 0; // calibrated pitch (raw - baseline)
+let currentYaw = 0;   // calibrated yaw (raw - baseline)
+let rawPitch = 0;     // raw pitch from face tracking
+let rawYaw = 0;       // raw yaw from face tracking
+
+/** Determine the current detected head direction from calibrated pitch/yaw. */
+function getDetectedDirection(): ArrowDirection {
+  // Check pitch (up/down) first — larger threshold
+  if (currentPitch < -NOD_THRESH) return 'up';
+  if (currentPitch > NOD_THRESH) return 'down';
+  // Check yaw (left/right)
+  if (currentYaw > YAW_THRESH) return 'left';
+  if (currentYaw < -YAW_THRESH) return 'right';
+  return 'center';
+}
 
 /** Check if current head pose matches the arrow direction. Generous thresholds. */
 function isDirectionMatch(dir: ArrowDirection): boolean {
@@ -223,6 +262,78 @@ function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.restore();
 }
 
+/** Load saved calibration from localStorage, returns true if found. */
+function loadCalibration(): boolean {
+  try {
+    const saved = localStorage.getItem(CALIBRATION_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (typeof data.pitch === 'number' && typeof data.yaw === 'number') {
+        baselinePitch = data.pitch;
+        baselineYaw = data.yaw;
+        return true;
+      }
+    }
+  } catch (_) {
+    // ignore parse errors
+  }
+  return false;
+}
+
+/** Save calibration to localStorage. */
+function saveCalibration() {
+  try {
+    localStorage.setItem(CALIBRATION_KEY, JSON.stringify({
+      pitch: baselinePitch,
+      yaw: baselineYaw,
+    }));
+  } catch (_) {
+    // ignore storage errors
+  }
+}
+
+/** Start or restart calibration. */
+function startCalibration() {
+  calibrating = true;
+  calibrationStartTime = performance.now();
+  calibrationSamples = [];
+  gameStarted = false;
+
+  // Reset game state for fresh start after calibration
+  arrows = [];
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  feedbackMsg = '';
+  scheduledUpToBeat = 0;
+  nextSpawnBeat = 1;
+  nextJudgeBeat = 1;
+}
+
+/** Finish calibration: compute baseline from samples and start the game. */
+function finishCalibration() {
+  if (calibrationSamples.length > 0) {
+    let sumPitch = 0, sumYaw = 0;
+    for (const s of calibrationSamples) {
+      sumPitch += s.pitch;
+      sumYaw += s.yaw;
+    }
+    baselinePitch = sumPitch / calibrationSamples.length;
+    baselineYaw = sumYaw / calibrationSamples.length;
+    saveCalibration();
+  }
+  calibrating = false;
+  gameStarted = true;
+
+  // Reset audio timeline so beats start fresh
+  const ac = ensureAudio();
+  audioStartTime = ac.currentTime;
+  scheduledUpToBeat = 0;
+  nextSpawnBeat = 1;
+  nextJudgeBeat = 1;
+  arrows = [];
+}
+
 export const ddr: Experiment = {
   name: "rhythm",
 
@@ -234,25 +345,68 @@ export const ddr: Experiment = {
     combo = 0;
     maxCombo = 0;
     feedbackMsg = '';
+    rawPitch = 0;
+    rawYaw = 0;
     currentPitch = 0;
+    currentYaw = 0;
 
-    const ac = ensureAudio();
-    audioStartTime = ac.currentTime;
-    scheduledUpToBeat = 0;
-    nextSpawnBeat = 1;
-    nextJudgeBeat = 1;
+    ensureAudio();
+
+    // Try to load saved calibration
+    const hasSaved = loadCalibration();
+    if (hasSaved) {
+      // Skip calibration, start game immediately
+      gameStarted = true;
+      calibrating = false;
+      const ac = ensureAudio();
+      audioStartTime = ac.currentTime;
+      scheduledUpToBeat = 0;
+      nextSpawnBeat = 1;
+      nextJudgeBeat = 1;
+    } else {
+      // Start calibration phase
+      startCalibration();
+    }
+
+    // Register 'c' key for recalibration
+    if (keyHandler) document.removeEventListener('keydown', keyHandler);
+    keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        startCalibration();
+      }
+    };
+    document.addEventListener('keydown', keyHandler);
   },
 
   update(face: FaceData | null, _dt: number) {
-    const t = now();
-
-    scheduleBeats();
-
-    // Track current head pose
+    // Track raw head pose
     if (face) {
-      currentPitch = face.headPitch;
-      currentYaw = face.headYaw;
+      rawPitch = face.headPitch;
+      rawYaw = face.headYaw;
     }
+
+    // Apply calibration baseline
+    currentPitch = rawPitch - baselinePitch;
+    currentYaw = rawYaw - baselineYaw;
+
+    // --- Calibration phase ---
+    if (calibrating) {
+      if (face) {
+        calibrationSamples.push({ pitch: rawPitch, yaw: rawYaw });
+      }
+      const elapsed = (performance.now() - calibrationStartTime) / 1000;
+      if (elapsed >= CALIBRATION_DURATION) {
+        finishCalibration();
+      }
+      return; // Don't process game logic during calibration
+    }
+
+    // --- Game phase ---
+    if (!gameStarted) return;
+
+    const t = now();
+    scheduleBeats();
 
     // Judge arrows at their target time
     for (const arrow of arrows) {
@@ -272,13 +426,13 @@ export const ddr: Experiment = {
             combo++;
             maxCombo = Math.max(maxCombo, combo);
             showFeedback('HIT!', teal);
-            playHit();
+            scheduleHitOnNextBeat();
           } else {
             arrow.hit = 'miss';
             arrow.hitTime = t;
             combo = 0;
             showFeedback('MISS', rose);
-            playMiss();
+            scheduleMissOnNextBeat();
           }
         }
       }
@@ -300,6 +454,14 @@ export const ddr: Experiment = {
     feedbackMsg = 'HIT!';
     feedbackTime = fakeNow - 0.1;
     feedbackColor = teal;
+    calibrating = false;
+    gameStarted = true;
+    baselinePitch = 0;
+    baselineYaw = 0;
+    currentPitch = 0.2; // simulate looking down slightly for HUD demo
+    currentYaw = 0;
+    rawPitch = 0.2;
+    rawYaw = 0;
     arrows = [
       { spawnTime: fakeNow - 6, targetTime: fakeNow + 2, direction: 'up' },
       { spawnTime: fakeNow - 5.5, targetTime: fakeNow + 2.5, direction: 'center' },
@@ -314,6 +476,59 @@ export const ddr: Experiment = {
   draw(ctx, ww, hh) {
     w = ww; h = hh;
     const t = audioCtx ? now() : 5;
+
+    // --- Calibration screen ---
+    if (calibrating) {
+      const elapsed = (performance.now() - calibrationStartTime) / 1000;
+      const remaining = Math.max(0, CALIBRATION_DURATION - elapsed);
+      const progress = Math.min(1, elapsed / CALIBRATION_DURATION);
+
+      // Title
+      pxText(ctx, "CALIBRATING", w / 2, h / 2 - 1.5, "bold 0.45px Fredoka, sans-serif", teal, "center");
+
+      // Instruction
+      pxText(ctx, "look straight at the camera", w / 2, h / 2 - 0.7, "0.25px Sora, sans-serif", cream, "center");
+
+      // Countdown
+      pxText(ctx, `${Math.ceil(remaining)}`, w / 2, h / 2 + 0.5, "bold 1px Fredoka, sans-serif", honey, "center");
+
+      // Progress bar
+      const barW = 4;
+      const barH_px = 0.15;
+      const barX = w / 2 - barW / 2;
+      const barY = h / 2 + 1.3;
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = stone;
+      ctx.fillRect(barX, barY, barW, barH_px);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = teal;
+      ctx.fillRect(barX, barY, barW * progress, barH_px);
+      ctx.restore();
+
+      // Samples collected
+      pxText(ctx, `samples: ${calibrationSamples.length}`, w / 2, h / 2 + 2.0, "0.15px monospace", stone, "center");
+
+      return; // Don't draw game elements during calibration
+    }
+
+    // --- Game rendering ---
+
+    // Hit window visualization: highlight target zone when an arrow is within 1 beat of arrival
+    const nextArrow = arrows.find(a => !a.hit && a.direction !== 'center');
+    if (nextArrow) {
+      const timeToTarget = nextArrow.targetTime - t;
+      if (timeToTarget >= 0 && timeToTarget < BEAT_INTERVAL) {
+        // Arrow is within one beat of the target — show active hit window
+        const intensity = 1 - (timeToTarget / BEAT_INTERVAL); // 0→1 as arrow approaches
+        ctx.save();
+        ctx.globalAlpha = 0.08 + intensity * 0.12;
+        ctx.fillStyle = teal;
+        // Draw a band around the target Y
+        ctx.fillRect(TARGET_X - 2, TARGET_Y - 0.8, 4, 1.6);
+        ctx.restore();
+      }
+    }
 
     // Target line
     ctx.save();
@@ -380,14 +595,28 @@ export const ddr: Experiment = {
     // Score (top right)
     pxText(ctx, `${score}`, w - 0.3, 0.6, "bold 0.4px monospace", cream, "right");
 
-    // Combo (top left)
+    // Combo (top left — below HUD)
     if (combo > 1) {
-      pxText(ctx, `${combo}x combo`, 0.3, 0.6, "bold 0.3px monospace", honey);
+      pxText(ctx, `${combo}x combo`, 0.3, 1.8, "bold 0.3px monospace", honey);
     }
 
     // Max combo (below combo)
     if (maxCombo > 1) {
-      pxText(ctx, `best: ${maxCombo}x`, 0.3, 1.0, "0.18px monospace", "rgba(255,255,255,0.3)");
+      pxText(ctx, `best: ${maxCombo}x`, 0.3, 2.2, "0.18px monospace", "rgba(255,255,255,0.3)");
+    }
+
+    // --- Debug HUD: detected head direction ---
+    {
+      const dir = getDetectedDirection();
+      const dirLabel = dir === 'center' ? 'NEUTRAL' : dir.toUpperCase();
+      const dirColor = dir === 'center' ? stone : sky;
+      pxText(ctx, `HEAD: ${dirLabel}`, 0.3, 0.6, "bold 0.22px monospace", dirColor);
+
+      // Show calibration info
+      if (baselinePitch !== 0 || baselineYaw !== 0) {
+        pxText(ctx, `cal: p${baselinePitch >= 0 ? '+' : ''}${baselinePitch.toFixed(2)} y${baselineYaw >= 0 ? '+' : ''}${baselineYaw.toFixed(2)}`, 0.3, 1.0, "0.13px monospace", stone);
+      }
+      pxText(ctx, "'c' recalibrate", 0.3, 1.3, "0.11px monospace", "rgba(255,255,255,0.2)");
     }
 
     // Feedback message (center, fades out)
@@ -447,5 +676,11 @@ export const ddr: Experiment = {
       audioCtx.close();
       audioCtx = null;
     }
+    if (keyHandler) {
+      document.removeEventListener('keydown', keyHandler);
+      keyHandler = null;
+    }
+    calibrating = false;
+    gameStarted = false;
   },
 };
