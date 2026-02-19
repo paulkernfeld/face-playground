@@ -187,17 +187,28 @@ export function drawPerson(
     }
   }
 
+  // Head measurements — use shoulder width as reference for proportional sizing
+  const headCx = (p[L_EYE].x + p[R_EYE].x) / 2;
+  const eyeY = (p[L_EYE].y + p[R_EYE].y) / 2;
+  const shoulderW = Math.abs(p[R_SHOULDER].x - p[L_SHOULDER].x);
+  const headW = shoulderW * 0.7;
+  const headH = headW * 1.2;
+  const headCy = eyeY + headH * 0.1;
+
+  // Head oval (drawn behind eyes)
+  rc.ellipse(headCx, headCy, headW, headH, {
+    fill: pal.body, fillStyle: 'solid',
+    stroke: charcoal, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 85,
+  });
+
   // Googly eyes
   drawGooglyEye(ctx, rc, p[L_EYE].x, p[L_EYE].y, person.lPupilX, person.lPupilY, seedBase + 60);
   drawGooglyEye(ctx, rc, p[R_EYE].x, p[R_EYE].y, person.rPupilX, person.rPupilY, seedBase + 70);
 
   // Party hat
-  const headCx = (p[L_EYE].x + p[R_EYE].x) / 2;
-  const eyeY = (p[L_EYE].y + p[R_EYE].y) / 2;
-  const faceH = p[NOSE].y - eyeY;
-  const headTopY = eyeY - faceH * 1.8;
-  const hatH = faceH * 3.5;
-  const hatW = faceH * 1.6;
+  const headTopY = eyeY - headH * 0.5;
+  const hatH = headH * 0.7;
+  const hatW = headW * 0.5;
   rc.polygon([
     [headCx, headTopY - hatH],
     [headCx - hatW / 2, headTopY],
@@ -298,14 +309,14 @@ export function updateSparks(sparks: Spark[], dt: number): Spark[] {
 export function makeDemoPose(cx: number): { x: number; y: number }[] {
   const p: { x: number; y: number }[] = new Array(33).fill({ x: cx, y: 4.5 });
   const set = (i: number, x: number, y: number) => { p[i] = { x, y }; };
-  set(NOSE, cx, 1.5);
-  set(L_EYE, cx - 0.5, 1.3); set(R_EYE, cx + 0.5, 1.3);
+  set(NOSE, cx, 1.6);
+  set(L_EYE, cx - 0.35, 1.2); set(R_EYE, cx + 0.35, 1.2);
   set(L_SHOULDER, cx - 1.5, 3); set(R_SHOULDER, cx + 1.5, 3);
   set(L_ELBOW, cx - 2.5, 2.5); set(R_ELBOW, cx + 2.5, 2.5);
   set(L_WRIST, cx - 3, 1.8); set(R_WRIST, cx + 3, 1.8);
   set(L_HIP, cx - 1, 5.5); set(R_HIP, cx + 1, 5.5);
   set(L_KNEE, cx - 1.2, 7); set(R_KNEE, cx + 1.2, 7);
   set(L_ANKLE, cx - 1.5, 8.5); set(R_ANKLE, cx + 1.5, 8.5);
-  set(L_MOUTH, cx - 0.4, 1.9); set(R_MOUTH, cx + 0.4, 1.9);
+  set(L_MOUTH, cx - 0.25, 1.95); set(R_MOUTH, cx + 0.25, 1.95);
   return p;
 }

@@ -62,6 +62,12 @@ export class GameRoughCanvas {
     });
   }
 
+  ellipse(x: number, y: number, w: number, h: number, options?: Options) {
+    this.wrap(() => {
+      this.rc.ellipse(x * S, y * S, w * S, h * S, this.opts(options));
+    });
+  }
+
   polygon(vertices: [number, number][], options?: Options) {
     this.wrap(() => {
       const scaled = vertices.map(([x, y]) => [x * S, y * S] as [number, number]);
