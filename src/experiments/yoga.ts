@@ -131,16 +131,17 @@ let inTransition = true;
 let currentBodyParts: BodyPartStates | null = null;
 let playerLimbColors: LimbColors = {};
 
-/** Compute per-limb colors by comparing classified body parts against the target pose */
+/** Compute per-limb colors by comparing classified body parts against the target pose.
+ *  Aligned limbs get sage (green/success), misaligned limbs get charcoal. */
 function computeLimbColors(parts: BodyPartStates | null, targetPose: YogaPose | undefined): LimbColors {
   if (!parts || !targetPose) return {};
   const target = POSE_PARTS[targetPose];
   return {
-    body: parts.torso === target.torso ? undefined : charcoal,
-    lArm: parts.leftArm === target.leftArm ? undefined : charcoal,
-    rArm: parts.rightArm === target.rightArm ? undefined : charcoal,
-    lLeg: parts.legs === target.legs ? undefined : charcoal,
-    rLeg: parts.legs === target.legs ? undefined : charcoal,
+    body: parts.torso === target.torso ? sage : charcoal,
+    lArm: parts.leftArm === target.leftArm ? sage : charcoal,
+    rArm: parts.rightArm === target.rightArm ? sage : charcoal,
+    lLeg: parts.legs === target.legs ? sage : charcoal,
+    rLeg: parts.legs === target.legs ? sage : charcoal,
   };
 }
 
