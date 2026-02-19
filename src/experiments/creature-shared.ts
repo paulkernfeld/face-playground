@@ -143,8 +143,8 @@ export function drawPerson(
     [p[L_SHOULDER].x, p[L_SHOULDER].y],
   ];
   rc.polygon(bodyPath, {
-    fill: bodyC, fillStyle: 'cross-hatch', fillWeight: 0.04,
-    stroke: bodyC, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 1,
+    fill: bodyC, fillStyle: 'solid',
+    stroke: charcoal, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 1,
   });
 
   // Arms + legs
@@ -153,13 +153,13 @@ export function drawPerson(
   drawLimb(rc, p, L_HIP, L_KNEE, L_ANKLE, lLegC, seedBase + 30);
   drawLimb(rc, p, R_HIP, R_KNEE, R_ANKLE, rLegC, seedBase + 40);
 
-  // Joint circles
+  // Joint circles (larger, on top of capsule limbs for emphasis)
   const joints = [L_ELBOW, R_ELBOW, L_KNEE, R_KNEE];
   const jColors = [lArmC, rArmC, lLegC, rLegC];
   joints.forEach((j, ji) => {
-    rc.circle(p[j].x, p[j].y, 0.4, {
+    rc.circle(p[j].x, p[j].y, 0.65, {
       fill: jColors[ji], fillStyle: 'solid',
-      stroke: charcoal, strokeWidth: 0.03, roughness: 1.2, seed: seedBase + 50 + ji,
+      stroke: charcoal, strokeWidth: 0.05, roughness: 1.2, seed: seedBase + 50 + ji,
     });
   });
 
@@ -219,14 +219,38 @@ export function drawPerson(
   ctx.moveTo(lm.x, lm.y);
   ctx.quadraticCurveTo(mCx, mCy + mW * 0.25, rm.x, rm.y);
   ctx.strokeStyle = pal.smile;
-  ctx.lineWidth = 0.08;
+  ctx.lineWidth = 0.14;
   ctx.lineCap = 'round';
   ctx.stroke();
 }
 
+/** Draw a single limb segment as a filled capsule (sausage shape) */
+function drawCapsule(rc: GameRoughCanvas, x1: number, y1: number, x2: number, y2: number, width: number, color: string, seed: number) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.001) return;
+  const nx = (-dy / len) * width / 2;
+  const ny = (dx / len) * width / 2;
+  rc.polygon([
+    [x1 + nx, y1 + ny],
+    [x2 + nx, y2 + ny],
+    [x2 - nx, y2 - ny],
+    [x1 - nx, y1 - ny],
+    [x1 + nx, y1 + ny],
+  ], {
+    fill: color, fillStyle: 'solid',
+    stroke: charcoal, strokeWidth: 0.04, roughness: 1.5, seed,
+  });
+  // Round caps at each end
+  rc.circle(x1, y1, width, { fill: color, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.04, roughness: 1.3, seed: seed + 2 });
+  rc.circle(x2, y2, width, { fill: color, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.04, roughness: 1.3, seed: seed + 3 });
+}
+
+const LIMB_WIDTH = 0.55;
+
 function drawLimb(rc: GameRoughCanvas, p: { x: number; y: number }[], a: number, b: number, c: number, color: string, seed: number) {
-  rc.line(p[a].x, p[a].y, p[b].x, p[b].y, { stroke: color, strokeWidth: 0.12, roughness: 2, seed });
-  rc.line(p[b].x, p[b].y, p[c].x, p[c].y, { stroke: color, strokeWidth: 0.12, roughness: 2, seed: seed + 1 });
+  drawCapsule(rc, p[a].x, p[a].y, p[b].x, p[b].y, LIMB_WIDTH, color, seed);
+  drawCapsule(rc, p[b].x, p[b].y, p[c].x, p[c].y, LIMB_WIDTH, color, seed + 5);
 }
 
 function drawGooglyEye(ctx: CanvasRenderingContext2D, rc: GameRoughCanvas, cx: number, cy: number, px: number, py: number, seed: number) {
