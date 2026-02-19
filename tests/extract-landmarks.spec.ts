@@ -14,9 +14,10 @@ const yogaFixtures = fs.readdirSync(fixtureDir)
 
 for (const fixture of yogaFixtures) {
   const jsonPath = path.join(fixtureDir, `${fixture}.landmarks.json`);
+  const imageJsonPath = path.join(fixtureDir, `${fixture}.image-landmarks.json`);
 
   test(`extract landmarks: ${fixture}`, async ({ page }) => {
-    test.skip(fs.existsSync(jsonPath), `Already extracted: ${fixture}.landmarks.json`);
+    test.skip(fs.existsSync(jsonPath) && fs.existsSync(imageJsonPath), `Already extracted: ${fixture}`);
     test.setTimeout(60_000);
 
     await setupFakeCamera(page, `/fixtures/${fixture}.png`);
@@ -35,5 +36,13 @@ for (const fixture of yogaFixtures) {
     const landmarks = JSON.parse(raw);
     fs.writeFileSync(jsonPath, JSON.stringify(landmarks, null, 2) + "\n");
     console.log(`Wrote ${fixture}.landmarks.json (${landmarks.length} landmarks)`);
+
+    // Also save image-space landmarks (0..1 coords matching the photo)
+    const imageRaw = await poseDiv.getAttribute("data-imagelandmarks");
+    if (imageRaw) {
+      const imageLandmarks = JSON.parse(imageRaw);
+      fs.writeFileSync(imageJsonPath, JSON.stringify(imageLandmarks, null, 2) + "\n");
+      console.log(`Wrote ${fixture}.image-landmarks.json (${imageLandmarks.length} landmarks)`);
+    }
   });
 }

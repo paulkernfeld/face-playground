@@ -76,6 +76,9 @@ export async function startPoseTest() {
         poseDiv.dataset.shouldery = angles.shoulderY.toFixed(4);
       }
       poseDiv.dataset.worldlandmarks = JSON.stringify(worldLm);
+      if (result.landmarks.length > 0) {
+        poseDiv.dataset.imagelandmarks = JSON.stringify(result.landmarks[0]);
+      }
       const parts = classifyBodyParts(worldLm);
       if (parts) {
         poseDiv.dataset.torso = parts.torso;
