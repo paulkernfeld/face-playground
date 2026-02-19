@@ -73,7 +73,7 @@ export async function startPoseTest() {
         poseDiv.dataset.elbow = (angles.avgElbow * d).toFixed(1);
         poseDiv.dataset.knee = (angles.avgKnee * d).toFixed(1);
         poseDiv.dataset.hip = (angles.avgHip * d).toFixed(1);
-        poseDiv.dataset.shouldery = angles.shoulderY.toFixed(4);
+        poseDiv.dataset.spineangle = (angles.spineAngle * d).toFixed(1);
       }
       poseDiv.dataset.worldlandmarks = JSON.stringify(worldLm);
       if (result.landmarks.length > 0) {

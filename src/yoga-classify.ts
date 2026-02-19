@@ -1,5 +1,6 @@
 // Pure yoga pose classifier based on 3D joint angles and body-part states.
 // Uses MediaPipe worldLandmarks (metric 3D, hip-centered) for perspective-independent classification.
+// All classification uses joint angles, not absolute positions — robust across body proportions and camera distances.
 
 import {
   L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW,
@@ -43,12 +44,32 @@ function angleAt(a: Point3D, b: Point3D, c: Point3D): number {
 
 const DEG = Math.PI / 180;
 
-function classifyTorso(lm: Point3D[]): TorsoState | null {
-  const shoulderY = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2;
-  if (shoulderY < -0.2) return "upright";
+/** Compute the angle between the spine vector and the vertical (Y-axis).
+ *  Returns degrees: ~0° = upright, ~90° = horizontal. */
+function spineAngleFromVertical(lm: Point3D[]): number {
+  const hipMidX = (lm[L_HIP].x + lm[R_HIP].x) / 2;
+  const hipMidY = (lm[L_HIP].y + lm[R_HIP].y) / 2;
+  const hipMidZ = (lm[L_HIP].z + lm[R_HIP].z) / 2;
+  const shMidX = (lm[L_SHOULDER].x + lm[R_SHOULDER].x) / 2;
+  const shMidY = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2;
+  const shMidZ = (lm[L_SHOULDER].z + lm[R_SHOULDER].z) / 2;
+  const spX = shMidX - hipMidX, spY = shMidY - hipMidY, spZ = shMidZ - hipMidZ;
+  const spineLen = Math.sqrt(spX * spX + spY * spY + spZ * spZ);
+  if (spineLen < 1e-9) return 0;
+  // Angle from vertical: acos(|spY| / len). MediaPipe Y points down, so spine going up = negative spY.
+  return Math.acos(Math.abs(spY) / spineLen) / DEG;
+}
 
-  // Horizontal — use cross product to determine prone vs supine.
+function classifyTorso(lm: Point3D[]): TorsoState | null {
+  const spineAngle = spineAngleFromVertical(lm);
+
+  // Upright: spine is mostly vertical (< 45° from vertical)
+  // Fixture data: mountain ~20°, volcano ~3°, tpose ~8°
+  if (spineAngle < 45) return "upright";
+
+  // Horizontal (> 45° from vertical) — use cross product to determine prone vs supine.
   // Body-facing normal = (R_SHOULDER - L_SHOULDER) x (shoulder_mid - hip_mid)
+  // Fixture data: plank ~75°, plank2 ~70°, shavasana ~74°, shavasana2 ~80°
   const lsh = lm[L_SHOULDER], rsh = lm[R_SHOULDER];
   const lhp = lm[L_HIP], rhp = lm[R_HIP];
   const shX = rsh.x - lsh.x, shY = rsh.y - lsh.y, shZ = rsh.z - lsh.z;
@@ -69,20 +90,40 @@ function classifyArm(lm: Point3D[], side: "left" | "right", upright: boolean): A
     ? [lm[L_SHOULDER], lm[L_ELBOW], lm[L_WRIST], lm[L_HIP]]
     : [lm[R_SHOULDER], lm[R_ELBOW], lm[R_WRIST], lm[R_HIP]];
 
+  // Shoulder angle: angle at shoulder between upper arm (elbow) and torso (hip)
+  // Fixture data (degrees):
+  //   down: mountain 17-23, shavasana 27-28, shavasana2 27-40
+  //   out: tpose 83-103
+  //   up: volcano 165
+  //   supporting (plank): 55-72
   const shoulderAngle = angleAt(elbow, shoulder, hip) / DEG;
+
+  // Elbow angle: angle at elbow between upper arm (shoulder) and forearm (wrist)
+  // All fixtures show relatively straight arms (136-172°)
   const elbowAngle = angleAt(shoulder, elbow, wrist) / DEG;
 
-  // Supporting: not upright, arm straight, and extended away from body
+  // Supporting: not upright, arm extended (elbow fairly straight), shoulder angle moderate
+  // Plank fixtures: shoulder 55-72°, elbow 150-160°
   if (!upright && elbowAngle > 120 && shoulderAngle > 40) return "supporting";
 
-  if (shoulderAngle < 40) return "down";
-  if (shoulderAngle >= 60 && shoulderAngle <= 120) return "out";
-  if (shoulderAngle > 140) return "up";
+  // Arm-at-side: shoulder angle small (arm hangs close to torso)
+  // Mountain: 17-23°, shavasana: 27-40°
+  if (shoulderAngle < 45) return "down";
+
+  // Arm out to side: shoulder angle roughly 60-120° (horizontal-ish)
+  // Tpose: 83-103°
+  if (shoulderAngle >= 55 && shoulderAngle <= 125) return "out";
+
+  // Arm overhead: shoulder angle large (arm far from torso toward head)
+  // Volcano: 165°
+  if (shoulderAngle > 135) return "up";
 
   return null;
 }
 
 function classifyLegs(lm: Point3D[]): LegState | null {
+  // Knee angle: angle at knee between thigh (hip) and shin (ankle)
+  // All yoga fixtures: 154-172° (relatively straight)
   const lKnee = angleAt(lm[L_HIP], lm[L_KNEE], lm[L_ANKLE]) / DEG;
   const rKnee = angleAt(lm[R_HIP], lm[R_KNEE], lm[R_ANKLE]) / DEG;
   const avgKnee = (lKnee + rKnee) / 2;
@@ -114,7 +155,7 @@ export interface PoseAngles {
   avgElbow: number;
   avgKnee: number;
   avgHip: number;
-  shoulderY: number;
+  spineAngle: number;
 }
 
 /** Get raw angle values for debugging */
@@ -133,7 +174,7 @@ export function getPoseAngles(lm: Point3D[]): PoseAngles | null {
     avgElbow: (lElbow + rElbow) / 2,
     avgKnee: (lKnee + rKnee) / 2,
     avgHip: (lHip + rHip) / 2,
-    shoulderY: (lm[L_SHOULDER].y + lm[R_SHOULDER].y) / 2,
+    spineAngle: spineAngleFromVertical(lm) * DEG,  // return in radians for consistency
   };
 }
 
