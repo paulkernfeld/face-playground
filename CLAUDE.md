@@ -94,10 +94,14 @@ interface Experiment {
 | **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
-| **Creature: thicker limbs** — chunky cartoon, not spindly | I | Increase lineWidth in creature-shared.ts drawPerson(). Verify: **(d)** `?demo=3` screenshot |
+| **Creature: thicker limbs** — chunky cartoon, not spindly | V | Filled capsule limbs (sausage shapes) with charcoal outlines, solid body fill, bigger joints. Verify: **(d)** [`?demo=3`](http://localhost:5173/?demo=3) screenshot |
 | **Creature: fingers** — mitten shapes at wrist endpoints | I | Add hand shapes in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
-| **Creature: face shape** — head outline, not floating eyes | I | Add oval/circle head in drawPerson(). Verify: **(d)** `?demo=3` screenshot |
-| **Experiment cleanup** — audio contexts, timers, listeners on menu return | I | Audit all experiments, add teardown. Verify: **(b)** Playwright test: open DDR → press q → check AudioContext closed |
+| **Creature: face shape** — head outline, not floating eyes | V | Added head ellipse behind googly eyes + ellipse() to GameRoughCanvas. Verify: **(d)** [`?demo=3`](http://localhost:5173/?demo=3) screenshot |
+| **Experiment cleanup** — audio contexts, timers, listeners on menu return | V | Added cleanup() to ddr, face-chomp, body-creature (close AudioContext). Verify: **(b)** Playwright test: open DDR → press q → check AudioContext closed |
+| **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | I | Pass FaceMesh landmarks to drawPerson(), draw face contour polygon. Verify: **(d)** `npx tsx scripts/overlay-demo.ts 3 yoga-mountain` |
+| **Research open source related work** — face-tracking games, body-tracking art, WebRTC experiments | D | Survey and document in CLAUDE.md experiment ideas |
+| **Research commercial competitors** — existing face/body tracking apps and games | D | Survey and document findings |
+| **RAII async/await refactor** — structured cleanup with `withExperiment(fn)` pattern | D | Replace manual cleanup() with scoped resource management. Architectural design needed |
 | Sent to friends for feedback | D | Waiting for responses |
 
 ## Philosophy
