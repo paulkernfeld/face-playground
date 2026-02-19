@@ -1,13 +1,15 @@
 import type { Experiment, FaceData } from "../types";
+import type { ArrowDirection } from "../ddr-pattern";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 import { teal, rose, honey, charcoal, stone, cream } from '../palette';
+import { getArrowDirection } from '../ddr-pattern';
 
 interface Arrow {
   // Times are in game seconds (relative to audioStartTime)
   spawnTime: number;
   targetTime: number;
-  rest: boolean; // true = no nod required, auto-passes
+  direction: ArrowDirection; // arrow direction from the fixed pattern
   hit?: 'hit' | 'miss';
   hitTime?: number;
 }
@@ -123,7 +125,7 @@ function scheduleBeats() {
     scheduledUpToBeat++;
   }
 
-  // Spawn arrows on every beat, but only odd beats require a nod
+  // Spawn arrows on every beat — direction comes from the fixed 8-step pattern
   const arrowHorizon = ctx.currentTime + TRAVEL_TIME;
   while (beatTime(nextSpawnBeat) < arrowHorizon) {
     spawnArrowOnBeat(nextSpawnBeat);
@@ -166,16 +168,26 @@ function spawnArrowOnBeat(beat: number) {
   arrows.push({
     spawnTime: spawnAudioTime - audioStartTime,
     targetTime: targetAudioTime - audioStartTime,
-    rest: beat % 2 !== 0, // odd beats are rest beats
+    direction: getArrowDirection(beat),
   });
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, alpha: number, seed: number) {
+/** Rotation angle for each arrow direction (points the arrow in the movement direction). */
+function directionRotation(dir: ArrowDirection): number {
+  switch (dir) {
+    case 'down':  return Math.PI;       // point down
+    case 'up':    return 0;             // point up (default arrow shape)
+    case 'left':  return -Math.PI / 2;  // point left
+    case 'right': return Math.PI / 2;   // point right
+    case 'center': return Math.PI;      // fallback (not drawn)
+  }
+}
+
+function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, alpha: number, seed: number, direction: ArrowDirection = 'down') {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(x, y);
-  // Point downward
-  ctx.rotate(Math.PI);
+  ctx.rotate(directionRotation(direction));
 
   const s = size / 2;
   rc.polygon([
@@ -230,12 +242,12 @@ export const ddr: Experiment = {
     for (const arrow of arrows) {
       if (arrow.hit) continue;
       if (t >= arrow.targetTime) {
-        if (arrow.rest) {
+        if (arrow.direction === 'center') {
           // Rest beat — auto-pass, no feedback
           arrow.hit = 'hit';
           arrow.hitTime = t;
         } else {
-          // Nod beat — is head nodded down?
+          // Active beat — is head nodded down?
           const nodding = currentPitch > NOD_THRESH;
           if (nodding) {
             arrow.hit = 'hit';
@@ -273,12 +285,13 @@ export const ddr: Experiment = {
     feedbackTime = fakeNow - 0.1;
     feedbackColor = teal;
     arrows = [
-      { spawnTime: fakeNow - 6, targetTime: fakeNow + 2, rest: false },
-      { spawnTime: fakeNow - 5.5, targetTime: fakeNow + 2.5, rest: true },
-      { spawnTime: fakeNow - 5, targetTime: fakeNow + 3, rest: false },
-      { spawnTime: fakeNow - 4.5, targetTime: fakeNow + 3.5, rest: true },
-      { spawnTime: fakeNow - 4, targetTime: fakeNow + 4, rest: false },
-      { spawnTime: fakeNow - 8, targetTime: fakeNow - 0.05, rest: false, hit: 'hit', hitTime: fakeNow - 0.1 },
+      { spawnTime: fakeNow - 6, targetTime: fakeNow + 2, direction: 'up' },
+      { spawnTime: fakeNow - 5.5, targetTime: fakeNow + 2.5, direction: 'center' },
+      { spawnTime: fakeNow - 5, targetTime: fakeNow + 3, direction: 'down' },
+      { spawnTime: fakeNow - 4.5, targetTime: fakeNow + 3.5, direction: 'center' },
+      { spawnTime: fakeNow - 4, targetTime: fakeNow + 4, direction: 'left' },
+      { spawnTime: fakeNow - 3.5, targetTime: fakeNow + 4.5, direction: 'right' },
+      { spawnTime: fakeNow - 8, targetTime: fakeNow - 0.05, direction: 'down', hit: 'hit', hitTime: fakeNow - 0.1 },
     ];
   },
 
@@ -317,9 +330,9 @@ export const ddr: Experiment = {
     });
     ctx.restore();
 
-    // Draw arrows in flight (skip rest beats — they're silent checks)
+    // Draw arrows in flight (skip center/rest beats — they're silent checks)
     for (const arrow of arrows) {
-      if (arrow.rest) continue;
+      if (arrow.direction === 'center') continue;
 
       const start = getStartPos();
       const progress = (t - arrow.spawnTime) / TRAVEL_TIME;
@@ -345,7 +358,7 @@ export const ddr: Experiment = {
 
       const size = arrow.hit ? ARROW_SIZE * (1 + (t - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
 
-      drawArrow(ctx, x, y, size, color, alpha, Math.floor(arrow.spawnTime * 100));
+      drawArrow(ctx, x, y, size, color, alpha, Math.floor(arrow.spawnTime * 100), arrow.direction);
     }
 
     // Score (top right)
