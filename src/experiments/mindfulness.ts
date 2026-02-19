@@ -237,15 +237,15 @@ export const mindfulness: Experiment = {
           pxText(ctx, `for ${TARGET_DURATION} seconds`, cx, cy + 2.8,
             "0.22px Sora, sans-serif", stone, "center");
 
-          // Show status indicators
+          // Show status indicators (keep above button bar at bottom)
           const eyeLabel = eyesClosed ? "eyes: closed" : "eyes: open";
           const eyeColor = eyesClosed ? sage : rose;
-          pxText(ctx, eyeLabel, cx, cy + 3.6,
+          pxText(ctx, eyeLabel, cx, cy + 3.2,
             "0.2px Sora, sans-serif", eyeColor, "center");
 
           const stillLabel = isStill ? "body: still" : "body: moving";
           const stillColor = isStill ? sage : rose;
-          pxText(ctx, stillLabel, cx, cy + 3.95,
+          pxText(ctx, stillLabel, cx, cy + 3.55,
             "0.2px Sora, sans-serif", stillColor, "center");
 
           // Show interrupt reason if recently interrupted
@@ -256,7 +256,7 @@ export const mindfulness: Experiment = {
 
           // Show best time if they've had a session
           if (peakTime > 0.5) {
-            pxText(ctx, `best: ${peakTime.toFixed(1)}s`, cx, h - 0.5,
+            pxText(ctx, `best: ${peakTime.toFixed(1)}s`, cx, h - 1.3,
               "0.18px Sora, sans-serif", stone, "center");
           }
         }
