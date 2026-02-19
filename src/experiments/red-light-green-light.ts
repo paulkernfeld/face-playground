@@ -180,6 +180,8 @@ export const redLightGreenLight: Experiment = {
       console.log(`[RLGL] move: ${lastMovement.toFixed(3)} / ${MOVEMENT_THRESHOLD}  phase: ${phase}  caught: ${caught}`);
     }
   },
+
+  cleanup() {},
 };
 
 function drawEdgeTint(ctx: CanvasRenderingContext2D, color: string) {

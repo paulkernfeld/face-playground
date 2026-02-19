@@ -79,4 +79,6 @@ export const headCursor: Experiment = {
       pxText(ctx, `pitch ${deg(pitch)}\u00b0  yaw ${deg(yaw)}\u00b0`, cx, cy - 0.5, "0.2px monospace", stone, "center");
     }
   },
+
+  cleanup() {},
 };

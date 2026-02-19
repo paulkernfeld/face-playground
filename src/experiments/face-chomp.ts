@@ -591,4 +591,11 @@ export const faceChomp: Experiment = {
       }
     }
   },
+
+  cleanup() {
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
+  },
 };

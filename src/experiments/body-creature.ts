@@ -263,4 +263,11 @@ export const bodyCreature: Experiment = {
     // Sparkles on top
     drawSparks(ctx, sparks);
   },
+
+  cleanup() {
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
+  },
 };

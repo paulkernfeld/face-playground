@@ -227,6 +227,8 @@ export const blendshapeDebug: Experiment = {
       0.5, h - 0.25, "0.17px monospace", stone,
     );
   },
+
+  cleanup() {},
 };
 
 // Listen for 'i' key to toggle all blendshapes

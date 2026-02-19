@@ -306,4 +306,6 @@ export const yoga: Experiment = {
     // Poses completed
     pxText(ctx, `poses: ${posesCompleted}`, 0.3, 0.6, "0.2px monospace", "rgba(255,255,255,0.4)");
   },
+
+  cleanup() {},
 };

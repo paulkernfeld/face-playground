@@ -441,4 +441,11 @@ export const ddr: Experiment = {
     // Instructions at bottom
     pxText(ctx, "move your head to match the arrows", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
   },
+
+  cleanup() {
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
+  },
 };

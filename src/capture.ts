@@ -120,4 +120,6 @@ export const captureExperiment: Experiment = {
       pxText(ctx, flashMsg, w / 2, h - 1.5, "bold 0.4px sans-serif", "#0f0", "center");
     }
   },
+
+  cleanup() {},
 };
