@@ -364,6 +364,12 @@ async function runLoop() {
       }
     }
 
+    // Injected poses for testing (e.g. overlay-demo.ts script)
+    const injectedPoses = (window as any).__overridePoses as { x: number; y: number; z?: number }[][] | undefined;
+    if (currentExp.updatePose && injectedPoses) {
+      currentExp.updatePose(injectedPoses, dt);
+    }
+
     // Detect pose landmarks (only if current experiment uses them)
     // No remap — body tracking needs the full camera frame (remap crops 5% margin)
     if (currentExp.updatePose && poseLandmarker && video.readyState >= 2) {
@@ -531,6 +537,11 @@ if (angleTestParam !== null) {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
       currentExp.update(null, dt);
+      // Injected poses for testing (e.g. overlay-demo.ts script)
+      const injectedPoses = (window as any).__overridePoses;
+      if (currentExp.updatePose && injectedPoses) {
+        currentExp.updatePose(injectedPoses, dt);
+      }
       ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.save();
