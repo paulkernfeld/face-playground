@@ -1,4 +1,4 @@
-import type { Experiment, Landmarks } from "../types";
+import type { Experiment, FaceData, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 import { BALL_COLORS as PALETTE_BALL_COLORS, charcoal, rose, sage, stone, honey, terra } from '../palette';
@@ -14,6 +14,7 @@ let rc: GameRoughCanvas;
 let w = 16, h = 9;
 let people: PersonState[] = [];
 let sparks: Spark[] = [];
+let mirroredFaceLandmarks: { x: number; y: number }[] | undefined;
 
 // Apple state
 const APPLE_R = 0.4;
@@ -107,9 +108,17 @@ export const bodyCreature: Experiment = {
     balls = [];
     spawnTimer = 0;
     appleAlive = false;
+    mirroredFaceLandmarks = undefined;
   },
 
-  update() {},
+  update(face: FaceData | null) {
+    if (face && face.landmarks.length >= 468) {
+      // Mirror face landmarks to match how body creature mirrors pose landmarks
+      mirroredFaceLandmarks = face.landmarks.map(l => ({ x: w - l.x, y: l.y }));
+    } else {
+      mirroredFaceLandmarks = undefined;
+    }
+  },
 
   updatePose(poses: Landmarks[], dt: number) {
     // Shared smoothing + pupil physics
@@ -255,9 +264,9 @@ export const bodyCreature: Experiment = {
       ctx.restore();
     }
 
-    // Each person
+    // Each person (pass face landmarks only to first person — FaceMesh detects one face)
     for (let i = 0; i < people.length; i++) {
-      drawPerson(ctx, rc, people[i], i, i * 100);
+      drawPerson(ctx, rc, people[i], i, i * 100, undefined, i === 0 ? mirroredFaceLandmarks : undefined);
     }
 
     // Sparkles on top

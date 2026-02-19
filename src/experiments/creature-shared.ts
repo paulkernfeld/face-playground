@@ -15,6 +15,13 @@ export const L_MOUTH = 9, R_MOUTH = 10;
 
 const SMOOTH = 0.5;
 
+// FaceMesh face oval contour indices (clockwise from forehead top)
+const FACE_OVAL = [
+  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+  397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+  172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+];
+
 // Re-export palette colors for consumers
 export const PALETTES = CREATURE_PALETTES;
 
@@ -119,11 +126,14 @@ export interface LimbColors {
   rLeg?: string;
 }
 
-/** Draw a single person with all body parts */
+/** Draw a single person with all body parts.
+ *  faceLandmarks: optional 468-point FaceMesh landmarks (mirrored, in game units).
+ *  When provided, draws face contour from real landmarks instead of guessed ellipse. */
 export function drawPerson(
   ctx: CanvasRenderingContext2D, rc: GameRoughCanvas,
   person: PersonState, paletteIndex: number, seedBase: number,
-  limbColors?: LimbColors
+  limbColors?: LimbColors,
+  faceLandmarks?: { x: number; y: number }[],
 ): void {
   const p = person.pts;
   if (p.length < 33) return;
@@ -187,7 +197,7 @@ export function drawPerson(
     }
   }
 
-  // Head measurements — use shoulder width as reference for proportional sizing
+  // Head — use FaceMesh contour if available, else fallback to guessed ellipse
   const headCx = (p[L_EYE].x + p[R_EYE].x) / 2;
   const eyeY = (p[L_EYE].y + p[R_EYE].y) / 2;
   const shoulderW = Math.abs(p[R_SHOULDER].x - p[L_SHOULDER].x);
@@ -195,11 +205,21 @@ export function drawPerson(
   const headH = headW * 1.2;
   const headCy = eyeY + headH * 0.1;
 
-  // Head oval (drawn behind eyes)
-  rc.ellipse(headCx, headCy, headW, headH, {
-    fill: pal.body, fillStyle: 'solid',
-    stroke: charcoal, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 85,
-  });
+  if (faceLandmarks && faceLandmarks.length >= 468) {
+    // Draw face contour from FaceMesh face oval landmarks
+    const contour: [number, number][] = FACE_OVAL.map(i => [faceLandmarks[i].x, faceLandmarks[i].y]);
+    contour.push(contour[0]); // close the polygon
+    rc.polygon(contour, {
+      fill: pal.body, fillStyle: 'solid',
+      stroke: charcoal, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 85,
+    });
+  } else {
+    // Fallback: guessed ellipse from shoulder width
+    rc.ellipse(headCx, headCy, headW, headH, {
+      fill: pal.body, fillStyle: 'solid',
+      stroke: charcoal, strokeWidth: 0.06, roughness: 1.5, seed: seedBase + 85,
+    });
+  }
 
   // Googly eyes
   drawGooglyEye(ctx, rc, p[L_EYE].x, p[L_EYE].y, person.lPupilX, person.lPupilY, seedBase + 60);
