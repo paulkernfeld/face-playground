@@ -70,7 +70,7 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 **Status**: **D** = needs design input from user, **I** = shovel-ready for Claude, **V** = done, needs user verification
 
 **Roles** (match the D→I→V flow):
-- **Design (D→I)**: Ask the user the right questions to fully spec out the plan. Once clear, update the TODO row to **I** with a concrete plan.
+- **Designer (D→I)**: Ask the user the right questions to fully spec out the plan. Once clear, update the TODO row to **I** with a concrete plan.
 - **Developer (I→V)**: Create a worktree (`.worktrees/<feature-slug>/`) and implement there. Prefer the cheapest verification method from the hierarchy below — use screenshots/PNGs (`?demo=N`) or unit tests over live camera playtests when possible. Move to **V** with a verification artifact (screenshot, test command, or link). Ralph loop end condition: every implemented feature is in **V** status with a verification artifact, committed in its worktree.
 - **QA (V→done)**: Tell the user **what to look for** first (e.g. "left arm should be charcoal, right arm sage green"), **then** open the link or show the screenshot. If good, merge the worktree branch into master, delete the worktree, and remove the TODO row. If not, move back to **I** with notes. Ralph loop end condition: no V-status items remain, all merged to master, worktrees cleaned up.
 
@@ -89,11 +89,11 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | **UI: evaluate screenshot button** | D | User usage opinion needed |
 | **Offline/PWA** — airplane mode on phone | D | Scope/priority decision |
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
-| **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | I | User tested: latency offset shifts the WRONG direction (earlier, should be later). Detection should happen LATER to match when human reacts to seeing the arrow. Flip offset direction or expand late window. Verify: **(e)** [`?exp=5`](http://localhost:5199/?exp=5) |
+| **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | V | Flipped offset: window now opens 50ms before beat, closes 400ms after (was reversed). Sweet spot 150ms after beat matches human reaction time. 10/10 tests pass. Verify: **(e)** [`?exp=5`](http://localhost:5199/?exp=5) — should feel natural to react after seeing arrows. Also **(a)** `npx tsx tests/ddr-timing.test.ts` |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
 | **Mindfulness: audio feedback** — sound cues for phase transitions (start, interrupt, complete) | D | Design: what sounds? Ding on complete, gentle tone on start, soft alert on interrupt? |
 | **Mindfulness: lock done** — prevent accidental restart after completing session | D | Design: what happens after "well done"? Lock screen, require explicit restart? |
-| **Mindfulness: text covered by buttons** — bottom text overlaps touch button bar | I | Move text up or hide button bar during mindfulness. Verify: **(e)** `?exp=8` on mobile/narrow viewport |
+| **Mindfulness: text covered by buttons** — bottom text overlaps touch button bar | V | Moved status indicators + best-time text up ~0.4 game units. Look for: eyes/body status text should be fully visible above the touch buttons. Verify: **(d)** screenshot at `.screenshots/mindfulness-text-fix.png` or **(e)** [`?exp=8`](http://localhost:5204/face-playground/?exp=8) on mobile |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
 | **Creature: fingers** — detailed hand shapes | D | Current 3-landmark capsules look meh. Options: (1) integrate MediaPipe Hand Landmarker (21 landmarks/hand, all finger joints) for detailed fingers, (2) keep simple but improve aesthetics. Design decision needed. |
