@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npx tsx tests/yoga-classify.test.ts` — pure Node yoga classifier tests (~60ms, no browser needed)
 - `npx tsx tests/ddr-pattern.test.ts` — pure Node DDR pattern sequence tests (~30ms, no browser needed)
 - `npx playwright test tests/extract-landmarks.spec.ts` — one-time extraction of yoga landmark fixtures (slow, needs Chrome)
+- `npx tsx scripts/overlay-demo.ts <exp-number> <fixture>` — render experiment with real pose data overlaid on fixture photo (e.g. `3 yoga-mountain`)
 - Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 - **Before pushing**: ensure `git status` is clean — no stale screenshots, untracked tool dirs, or uncommitted changes
 
@@ -27,18 +28,9 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 
 **Coordinate system**: Experiments work in a fixed-aspect game-unit space (not pixels). `main.ts` handles letterboxing, landmark remapping/scaling, and head pose extraction — experiments just receive `FaceData` in game units.
 
-**Experiment interface** (`src/types.ts`):
-```ts
-interface Experiment {
-  name: string;
-  setup(ctx, w, h): void;
-  update(face: FaceData | null, dt: number): void;
-  draw(ctx, w, h, debug?): void;  // debug=true when 'v' overlay is active
-  demo?(): void;  // set up fake state for camera-free screenshots
-}
-```
+**Experiment interface** (`src/types.ts`): defines `setup`, `update`, `draw`, `cleanup` (required), `demo` and `updatePose` (optional).
 
-**Adding an experiment**: Create a file in `src/experiments/`, export an `Experiment` object, import it in `main.ts`, and add it to the `experiments` array. It gets a menu entry automatically.
+**Adding an experiment**: Create a file in `src/experiments/`, export an `Experiment` object, import it in `main.ts`, and add it to the `experiments` array. It gets a menu entry automatically. No module-level mutable state (listeners, timers, audio contexts) — acquire resources in `setup()`, release in `cleanup()`.
 
 **Shared body creature rendering** (`src/experiments/creature-shared.ts`): Extracted `PersonState`, `drawPerson()`, `updatePeople()`, pupil physics, sparks, palettes, and landmark constants. Body-tracking experiments should import from here rather than duplicating creature rendering code.
 
@@ -130,7 +122,7 @@ interface Experiment {
 - Headless Chrome has a fake camera, so `getUserMedia` succeeds — mock failures with `page.addInitScript`
 - Fake camera from static image: use `setupFakeCamera(page, url)` from `tests/fake-camera.ts` — overrides `getUserMedia` with `canvas.captureStream()`. Video element must be `muted` for autoplay without user interaction.
 - Head pose fixtures live in `fixtures/` — raw 640x480 video frames, NOT canvas overlays. Served by Vite at `/fixtures/<name>.png`.
-- Yoga pose fixtures prefixed `yoga-` (e.g. `fixtures/yoga-mountain.png`) with extracted `.landmarks.json` for fast Node tests
+- Yoga pose fixtures prefixed `yoga-` (e.g. `fixtures/yoga-mountain.png`) with extracted `.landmarks.json` (world-space) and `.image-landmarks.json` (image-space 0..1) for fast Node tests
 - `tsx@3.12.x` pinned — newer tsx uses esbuild 0.18+ which requires macOS 12+
 - Git worktrees go in `.worktrees/` (already in `.gitignore`)
 - When feasible, take a Playwright screenshot of completed visual features and open in Preview for user verification
@@ -145,4 +137,5 @@ interface Experiment {
 - **No `ctx.fillText` in game-unit space** — sub-pixel font sizes (anything under ~1px) silently fail. Use `console.log` for debug output, or `pxText()` helper for user-facing text. See TODO for planned pixel-coord fix.
 - **AudioContext in Playwright** — headless Chrome suspends AudioContext and `currentTime` won't advance. Use `page.addInitScript` to override the constructor with auto-resume. Use `?play=N` instead of pressing menu keys, since `enterExperiment()` blocks on FaceMesh model loading.
 - **Exposing game state for tests** — pattern: `(window as any).__ddrArrows = arrows` in game code, then `page.evaluate(() => (window as any).__ddrArrows)` in Playwright. Lightweight way to verify wiring without parsing canvas.
+- **Injecting pose data for tests** — set `(window as any).__overridePoses` before experiment starts; both camera and play-mode loops check it. Used by `overlay-demo.ts`.
 - **Playwright screenshots** — save to `.screenshots/` directory (gitignored), e.g. `filename: ".screenshots/demo.png"`
