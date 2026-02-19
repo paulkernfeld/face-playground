@@ -2,7 +2,7 @@ import type { Experiment, FaceData } from "../types";
 import type { ArrowDirection } from "../ddr-pattern";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { teal, rose, honey, charcoal, stone, cream, sky, lavender } from '../palette';
+import { teal, rose, honey, charcoal, stone, ink, sky, lavender } from '../palette';
 import { getArrowDirection } from '../ddr-pattern';
 
 interface Arrow {
@@ -487,7 +487,7 @@ export const ddr: Experiment = {
       pxText(ctx, "CALIBRATING", w / 2, h / 2 - 1.5, "bold 0.45px Fredoka, sans-serif", teal, "center");
 
       // Instruction
-      pxText(ctx, "look straight at the camera", w / 2, h / 2 - 0.7, "0.25px Sora, sans-serif", cream, "center");
+      pxText(ctx, "look straight at the camera", w / 2, h / 2 - 0.7, "0.25px Sora, sans-serif", charcoal, "center");
 
       // Countdown
       pxText(ctx, `${Math.ceil(remaining)}`, w / 2, h / 2 + 0.5, "bold 1px Fredoka, sans-serif", honey, "center");
@@ -584,7 +584,7 @@ export const ddr: Experiment = {
       }
 
       const color = arrow.hit === 'miss' ? stone
-        : arrow.hit === 'hit' ? cream
+        : arrow.hit === 'hit' ? ink
         : teal;
 
       const size = arrow.hit ? ARROW_SIZE * (1 + (t - (arrow.hitTime ?? 0)) * 0.5) : ARROW_SIZE;
@@ -593,7 +593,7 @@ export const ddr: Experiment = {
     }
 
     // Score (top right)
-    pxText(ctx, `${score}`, w - 0.3, 0.6, "bold 0.4px monospace", cream, "right");
+    pxText(ctx, `${score}`, w - 0.3, 0.6, "bold 0.4px monospace", charcoal, "right");
 
     // Combo (top left — below HUD)
     if (combo > 1) {
@@ -602,7 +602,7 @@ export const ddr: Experiment = {
 
     // Max combo (below combo)
     if (maxCombo > 1) {
-      pxText(ctx, `best: ${maxCombo}x`, 0.3, 2.2, "0.18px monospace", "rgba(255,255,255,0.3)");
+      pxText(ctx, `best: ${maxCombo}x`, 0.3, 2.5, "0.18px monospace", stone);
     }
 
     // --- Debug HUD: detected head direction ---
@@ -616,7 +616,7 @@ export const ddr: Experiment = {
       if (baselinePitch !== 0 || baselineYaw !== 0) {
         pxText(ctx, `cal: p${baselinePitch >= 0 ? '+' : ''}${baselinePitch.toFixed(2)} y${baselineYaw >= 0 ? '+' : ''}${baselineYaw.toFixed(2)}`, 0.3, 1.0, "0.13px monospace", stone);
       }
-      pxText(ctx, "'c' recalibrate", 0.3, 1.3, "0.11px monospace", "rgba(255,255,255,0.2)");
+      pxText(ctx, "'c' recalibrate", 0.3, 1.3, "0.11px monospace", stone);
     }
 
     // Feedback message (center, fades out)
@@ -641,7 +641,7 @@ export const ddr: Experiment = {
       // Vertical guide line
       ctx.save();
       ctx.globalAlpha = 0.1;
-      ctx.strokeStyle = cream;
+      ctx.strokeStyle = stone;
       ctx.lineWidth = 0.02;
       ctx.beginPath();
       ctx.moveTo(indicatorX, indicatorCY - barH);
@@ -659,7 +659,7 @@ export const ddr: Experiment = {
       ctx.restore();
 
       // Current pitch dot
-      const dotColor = nodding ? teal : 'rgba(255,255,255,0.5)';
+      const dotColor = nodding ? teal : stone;
       const dotSize = nodding ? 0.35 : 0.25;
       rc.circle(indicatorX, dotY, dotSize, {
         fill: dotColor, fillStyle: 'solid', stroke: 'none',
@@ -668,7 +668,7 @@ export const ddr: Experiment = {
     }
 
     // Instructions at bottom
-    pxText(ctx, "move your head to match the arrows", w / 2, h - 0.3, "0.18px monospace", "rgba(255,255,255,0.25)", "center");
+    pxText(ctx, "move your head to match the arrows", w / 2, h - 0.3, "0.18px monospace", stone, "center");
   },
 
   cleanup() {

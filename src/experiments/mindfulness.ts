@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, rose, honey, stone, cream, lavender, sky, teal } from '../palette';
+import { sage, rose, honey, stone, charcoal, lavender, sky, teal } from '../palette';
 
 // Constants
 const NOSE_TIP = 1;
@@ -171,7 +171,7 @@ export const mindfulness: Experiment = {
           pxText(ctx, `${TARGET_DURATION}s`, cx, cy - 2.2,
             "600 0.6px Fredoka, sans-serif", sage, "center");
           pxText(ctx, "well done", cx, cy + 2.5,
-            "600 0.35px Sora, sans-serif", cream, "center");
+            "600 0.35px Sora, sans-serif", charcoal, "center");
           pxText(ctx, "open your eyes to try again", cx, cy + 3.1,
             "0.2px Sora, sans-serif", stone, "center");
           return;
@@ -201,7 +201,7 @@ export const mindfulness: Experiment = {
           // Time display
           const secs = Math.floor(closedStillTime);
           pxText(ctx, `${secs}s`, cx, cy - 2.5,
-            "600 0.5px Fredoka, sans-serif", cream, "center");
+            "600 0.5px Fredoka, sans-serif", charcoal, "center");
 
           // Gentle encouragement
           const msg = progress > 0.7 ? "almost there..." :
@@ -224,7 +224,7 @@ export const mindfulness: Experiment = {
         });
 
         pxText(ctx, "mindfulness", cx, cy - 2.5,
-          "600 0.5px Fredoka, sans-serif", cream, "center");
+          "600 0.5px Fredoka, sans-serif", charcoal, "center");
 
         if (!hasHadFace) {
           pxText(ctx, "waiting for face...", cx, cy + 2.0,

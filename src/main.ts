@@ -450,7 +450,7 @@ function drawAngleWarnings(ctx: CanvasRenderingContext2D, now: number) {
   // Sketchy background pill
   if (rc) {
     rc.rectangle(tx - 1.6, ty - 0.3, 3.2, 0.45, {
-      fill: 'rgba(15, 15, 35, 0.7)', fillStyle: 'solid',
+      fill: 'rgba(255, 255, 255, 0.8)', fillStyle: 'solid',
       stroke: warningColor, strokeWidth: 0.02,
       roughness: 1.2, seed: 900,
     });

@@ -1,7 +1,7 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { rose, sage, honey, terra, cream, stone } from '../palette';
+import { rose, sage, honey, terra, charcoal, stone } from '../palette';
 
 // Blendshapes we think indicate facial tension
 const TENSION_NAMES = [
@@ -135,7 +135,7 @@ export const blendshapeDebug: Experiment = {
         const { name, val } = active[i];
 
         // Label
-        pxText(ctx, name, LEFT, y + 0.22, "0.22px monospace", cream);
+        pxText(ctx, name, LEFT, y + 0.22, "0.22px monospace", charcoal);
 
         // Bar background
         const barX = LEFT + 3.0;
@@ -152,7 +152,7 @@ export const blendshapeDebug: Experiment = {
         }
 
         // Value
-        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22, "0.17px monospace", cream);
+        pxText(ctx, val.toFixed(2), barX + val * BAR_MAX + 0.1, y + 0.22, "0.17px monospace", charcoal);
       }
     }
 
