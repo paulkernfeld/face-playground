@@ -82,7 +82,7 @@ export const captureExperiment: Experiment = {
   draw(ctx, _w: number, _h: number, debug?: boolean) {
     // Only fill background when video feed is not showing
     if (!debug) {
-      ctx.fillStyle = '#1a1a2e';
+      ctx.fillStyle = '#F5F0E8';
       ctx.fillRect(0, 0, w, h);
     }
 

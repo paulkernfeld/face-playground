@@ -1,6 +1,6 @@
 // Global color palette — "bougie kids toys"
 // Muted, warm, Scandinavian-inspired. Not neon primary colors.
-// Designed to read well on dark canvas (#1a1a2e) backgrounds.
+// Designed to read well on warm cream (#F5F0E8) backgrounds.
 
 // Primary accent colors
 export const rose = '#E09090';       // dusty rose
@@ -18,7 +18,7 @@ export const ink = '#2D2A28';        // deepest text
 export const stone = '#8A8580';      // muted text
 
 // Canvas background
-export const canvasBg = '#1a1a2e';
+export const canvasBg = '#F5F0E8';
 
 // Semantic aliases
 export const success = sage;

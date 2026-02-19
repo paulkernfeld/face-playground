@@ -575,7 +575,7 @@ export const faceChomp: Experiment = {
     }
 
     // Score
-    pxText(ctx, `${score}`, w - 0.25, 0.5, "bold 0.35px monospace", cream, "right");
+    pxText(ctx, `${score}`, w - 0.25, 0.5, "bold 0.35px monospace", charcoal, "right");
 
     // Pre-game prompt
     if (!gameStarted && alive) {
@@ -585,9 +585,9 @@ export const faceChomp: Experiment = {
     // Death message
     if (!alive) {
       pxText(ctx, "CHOMP'D", w / 2, h / 2 - 0.3, "bold 0.6px monospace", rose, "center");
-      pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", cream, "center");
+      pxText(ctx, `score: ${score}`, w / 2, h / 2 + 0.3, "bold 0.35px monospace", charcoal, "center");
       if (performance.now() - deathTime > 2000) {
-        pxText(ctx, "open mouth to restart", w / 2, h / 2 + 0.8, "0.22px monospace", "rgba(255,255,255,0.4)", "center");
+        pxText(ctx, "open mouth to restart", w / 2, h / 2 + 0.8, "0.22px monospace", stone, "center");
       }
     }
   },

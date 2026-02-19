@@ -1,7 +1,7 @@
 import type { Experiment, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, honey, rose, stone, cream, charcoal } from '../palette';
+import { sage, honey, rose, stone, charcoal } from '../palette';
 import type { PersonState, LimbColors } from './creature-shared';
 import {
   NOSE, L_EYE, R_EYE,
@@ -260,7 +260,7 @@ export const yoga: Experiment = {
 
     // Pose name (top center)
     const pose = POSES[currentPoseIdx];
-    pxText(ctx, pose.name, w / 2, 0.6, "bold 0.4px Fredoka, sans-serif", cream, "center");
+    pxText(ctx, pose.name, w / 2, 0.6, "bold 0.4px Fredoka, sans-serif", charcoal, "center");
 
     // Transition message
     if (inTransition) {

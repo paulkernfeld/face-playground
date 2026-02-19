@@ -1,7 +1,7 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { sage, rose, honey, stone, cream, sky } from '../palette';
+import { sage, rose, honey, stone, charcoal, sky } from '../palette';
 
 // Posture state
 let calibrated = false;
@@ -175,7 +175,7 @@ export const posture: Experiment = {
     if (!calibrated) {
       const pulse = 0.5 + 0.5 * Math.sin(time * 2);
 
-      pxText(ctx, "posture check", w / 2, h * 0.3, "600 0.5px Fredoka, sans-serif", cream, "center");
+      pxText(ctx, "posture check", w / 2, h * 0.3, "600 0.5px Fredoka, sans-serif", charcoal, "center");
       pxText(ctx, "sit up straight, then", w / 2, h * 0.45, "0.25px Sora, sans-serif", stone, "center");
       pxText(ctx, "open your mouth", w / 2, h * 0.55, "600 0.28px Sora, sans-serif", honey, "center");
       pxText(ctx, "to set your baseline", w / 2, h * 0.65, "0.25px Sora, sans-serif", stone, "center");
