@@ -89,14 +89,13 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | **UI: evaluate screenshot button** | D | User usage opinion needed |
 | **Offline/PWA** — airplane mode on phone | D | Scope/priority decision |
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
-| **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
-| **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | I | Investigate compensation: hit window expansion, latency offset, or visual feedback timing |
+| **DDR: detection feels laggy** — ~half-beat delay, you have to position your head early | I | User tested: latency offset shifts the WRONG direction (earlier, should be later). Detection should happen LATER to match when human reacts to seeing the arrow. Flip offset direction or expand late window. Verify: **(e)** [`?exp=5`](http://localhost:5199/?exp=5) |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
-| **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
+| **Mindfulness experiment** — close eyes + stay still via blendshapes | V | Breathing circle + progress arc + timer. Detects eyes closed (blendshapes > 0.5) and stillness (nose delta < 0.015). Verify: **(e)** [`?exp=8`](http://localhost:5202/?exp=8) — close eyes for 3s, see progress arc fill and timer count. Also screenshot at `.screenshots/mindfulness.png` |
 | **Warning system refactor** — main.ts warnings vs experiment warnings overlap | D | API design: how experiments receive/render warnings |
 | **iPad** — field of view much larger than desktop | D | Needs iPad testing by user |
-| **Creature: fingers** — sausage fingers from real landmarks | I | Draw capsules from wrist to each fingertip (pinky 17/18, index 19/20, thumb 21/22). Needs new fixture with hand close to camera. Verify: **(d)** `?demo=3` screenshot + overlay-demo with new fixture |
-| **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | I | Pass FaceMesh landmarks to drawPerson(), draw face contour polygon. Verify: **(d)** `npx tsx scripts/overlay-demo.ts 3 yoga-mountain` |
+| **Creature: fingers** — detailed hand shapes | D | Current 3-landmark capsules look meh. Options: (1) integrate MediaPipe Hand Landmarker (21 landmarks/hand, all finger joints) for detailed fingers, (2) keep simple but improve aesthetics. Design decision needed. |
+| **Creature: face from FaceMesh** — use 468 face landmarks to draw head outline (jawline + forehead contour) instead of guessing ellipse from pose landmarks | V | Draws face oval from 36 FaceMesh contour points when available, ellipse fallback in demo/overlay mode. Overlay-demo confirms backward compat. Look for: face shape matches your actual face shape instead of a generic oval. Verify: **(e)** [`?exp=3`](http://localhost:5203/face-playground/?exp=3) — the head outline should follow your real jawline/forehead shape |
 | **Research open source related work** — face-tracking games, body-tracking art, WebRTC experiments | D | Survey and document in CLAUDE.md experiment ideas |
 | **Research commercial competitors** — existing face/body tracking apps and games | D | Survey and document findings |
 | **RAII async/await refactor** — structured cleanup with `withExperiment(fn)` pattern | D | Replace manual cleanup() with scoped resource management. Architectural design needed |
