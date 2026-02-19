@@ -14,6 +14,7 @@ import { redLightGreenLight } from "./experiments/red-light-green-light";
 import { ddr } from "./experiments/ddr";
 import { yoga } from "./experiments/yoga";
 import { posture } from "./experiments/posture";
+import { mindfulness } from "./experiments/mindfulness";
 import { captureExperiment } from "./capture";
 import { startAngleTest } from "./angle-test";
 import { startPoseTest } from "./pose-test";
@@ -21,7 +22,7 @@ import { pxText } from "./px-text";
 import { experimentColors, honey, warning as warningColor, canvasBg } from "./palette";
 
 // -- Registry --
-const experiments: Experiment[] = [headCursor, faceChomp, bodyCreature, redLightGreenLight, ddr, yoga, posture];
+const experiments: Experiment[] = [headCursor, faceChomp, bodyCreature, redLightGreenLight, ddr, yoga, posture, mindfulness];
 
 const experimentMeta = [
   { icon: '🎯', desc: 'move a cursor with your nose', color: experimentColors[0] },
@@ -31,6 +32,7 @@ const experimentMeta = [
   { icon: '🎵', desc: 'rhythm game — match arrows with your head', color: experimentColors[4] },
   { icon: '🧘\u200d♀️', desc: 'match yoga poses with your body', color: experimentColors[5] },
   { icon: '🪑', desc: 'gentle nudge when your posture drifts', color: experimentColors[6] },
+  { icon: '🧘', desc: 'close your eyes and be still', color: experimentColors[7] },
 ];
 
 // -- DOM --
