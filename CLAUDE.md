@@ -66,6 +66,10 @@ interface Experiment {
 - **Posture check CLI command**: Launch Chrome, check posture against saved calibration, report back
 - **Shoulder shrugging activity**: Detect/guide shoulder raises and releases via pose landmarks
 - **Eye blinking activity**: Track blink rate and patterns via blendshapes
+- **Sound effects for more experiments**: Synthesized or sampled audio feedback across experiments
+- **Speech synthesis**: Use Web Speech API for voice cues (e.g. "red light", "slouching", "great pose")
+- **Soft gaze detection**: Detect relaxed vs focused gaze via iris/pupil tracking
+- **Eye yoga (netra vyayamam)**: Guide eyes through all 12 clock positions, figure-8s, near/far focus — trackable via iris landmarks
 
 ## TODO
 
