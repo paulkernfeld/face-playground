@@ -71,8 +71,8 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 
 **Roles** (match the D→I→V flow):
 - **Design (D→I)**: Ask the user the right questions to fully spec out the plan. Once clear, update the TODO row to **I** with a concrete plan.
-- **Implement (I→V)**: Take a feature with a clear plan and implement it. Return a **single clickable link** if any human verification is needed. Move to **V**.
-- **QA (V→done)**: Show the verification link and ask if it's good. If good, remove the TODO row. If not, move it back to **I** with notes on what's wrong. Ralph loop end condition: no V-status items remain and all changes are granularly committed.
+- **Implement (I→V)**: Create a worktree (`.worktrees/<feature-slug>/`) and implement there. Verification link must point to the worktree's dev server (e.g. `http://localhost:5200/?demo=3`). Move to **V**. Ralph loop end condition: every implemented feature is in **V** status with a clickable verification link (or passing test), committed in its worktree.
+- **QA (V→done)**: Open the verification link, ask if it's good. If good, merge the worktree branch into master, delete the worktree, and remove the TODO row. If not, move back to **I** with notes. Ralph loop end condition: no V-status items remain, all merged to master, worktrees cleaned up.
 
 **Verification hierarchy** — use the cheapest feasible method. Human time >> Claude time.
 - **(a)** Node unit test — `npx tsx tests/foo.test.ts`
