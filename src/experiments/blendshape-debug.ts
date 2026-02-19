@@ -70,6 +70,7 @@ const MAYBE_SET = new Set(MAYBE_NAMES);
 let latestBlendshapes: Blendshapes = new Map();
 let showAll = false;
 let rc: GameRoughCanvas;
+let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 export const blendshapeDebug: Experiment = {
   name: "tension",
@@ -77,6 +78,10 @@ export const blendshapeDebug: Experiment = {
   setup(ctx) {
     latestBlendshapes = new Map();
     rc = new GameRoughCanvas(ctx.canvas);
+    keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "i") showAll = !showAll;
+    };
+    document.addEventListener("keydown", keyHandler);
   },
 
   demo() {
@@ -228,12 +233,10 @@ export const blendshapeDebug: Experiment = {
     );
   },
 
-  cleanup() {},
+  cleanup() {
+    if (keyHandler) {
+      document.removeEventListener("keydown", keyHandler);
+      keyHandler = null;
+    }
+  },
 };
-
-// Listen for 'i' key to toggle all blendshapes
-document.addEventListener("keydown", (e) => {
-  if (e.key === "i") {
-    showAll = !showAll;
-  }
-});
