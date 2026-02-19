@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `?angleTest` — minimal FaceMesh page that writes pitch/yaw to `#angles` DOM element (used by Playwright tests)
 - `npx playwright test` — run Playwright tests (auto-starts Vite via `webServer` config)
 - `npx tsx tests/yoga-classify.test.ts` — pure Node yoga classifier tests (~60ms, no browser needed)
+- `npx tsx tests/ddr-pattern.test.ts` — pure Node DDR pattern sequence tests (~30ms, no browser needed)
 - `npx playwright test tests/extract-landmarks.spec.ts` — one-time extraction of yoga landmark fixtures (slow, needs Chrome)
 - Deploy: `git push` triggers GitHub Actions → GitHub Pages at https://paulkernfeld.github.io/face-playground/
 - **Before pushing**: ensure `git status` is clean — no stale screenshots, untracked tool dirs, or uncommitted changes
@@ -79,7 +80,7 @@ interface Experiment {
 | **Light background** — dark→light canvas bg | D | Affects all experiments visually |
 | **Yoga: use angles not positions** — joint angles instead of absolute position | I | Change classifier to angle-based matching. Verify: **(a)** existing `yoga-classify.test.ts` Node tests still pass |
 | **Yoga: alignment visibility** — charcoal unaligned, colored aligned, full limb segments | I | Rendering change in yoga.ts. Verify: **(d)** `?demo=6` screenshot |
-| **DDR: fixed repeating pattern** — up,center,down,center,left,right,left,right loop | I | Extract sequence generator, hardcode pattern. Verify: **(a)** unit test that sequence produces correct pattern |
+| **DDR: fixed repeating pattern** — up,center,down,center,left,right,left,right loop | V | Extract sequence generator, hardcode pattern. Verify: **(a)** unit test that sequence produces correct pattern |
 | **DDR: nod detection feels off** | D | Needs user to describe the problem more specifically |
 | **DDR: camera angle calibration** — baseline neutral pitch | D | UX design for calibration step needed |
 | **Mindfulness experiment** — close eyes + stay still via blendshapes | I | New experiment. Verify: **(e)** user opens, closes eyes 3s, sees detection |
