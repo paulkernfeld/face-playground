@@ -12,6 +12,9 @@ import rough from 'roughjs';
 import type { RoughCanvas } from 'roughjs/bin/canvas';
 import type { Options } from 'roughjs/bin/core';
 
+// Expose for Playwright tests (same pattern as __ddrArrows)
+(window as any).__rough = rough;
+
 const S = 100;
 
 export class GameRoughCanvas {

@@ -263,10 +263,16 @@ export const mindfulness: Experiment = {
           const progress = closedStillTime / TARGET_DURATION;
 
           // Outer progress ring (partial arc)
-          const arcEnd = -Math.PI / 2 + progress * Math.PI * 2;
-          rc.arc(cx, cy, 4.0, 4.0, -Math.PI / 2, arcEnd, false, {
-            stroke: lavender, strokeWidth: 0.04, roughness: 0.5, seed: 20,
-          });
+          // Guard: rough.js arc hangs when sweep is near-zero under the full
+          // game-loop context (FaceMesh + canvas transforms + rough.js).
+          // Can't reproduce standalone — requires resource pressure of the
+          // full loop. Removing this guard causes deterministic loop stall.
+          if (progress > 0.01) {
+            const arcEnd = -Math.PI / 2 + progress * Math.PI * 2;
+            rc.arc(cx, cy, 4.0, 4.0, -Math.PI / 2, arcEnd, false, {
+              stroke: lavender, strokeWidth: 0.04, roughness: 0.5, seed: 20,
+            });
+          }
 
           // Breathing circle — gets more vivid as session progresses
           const circleColor = progress > 0.7 ? sage : (progress > 0.3 ? sky : lavender);

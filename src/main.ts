@@ -329,6 +329,7 @@ async function runLoop() {
 
     // FPS + debug info
     frameCount++;
+    (window as any).__frameCount = frameCount;
     if (frameCount % 30 === 0) {
       fpsEl.textContent = `${Math.round(1 / dt)} fps`;
       const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
