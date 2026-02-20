@@ -130,6 +130,10 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 - **`verbatimModuleSyntax` enabled** — use `import type { Foo }` for type-only imports, or `tsc` will error
 - **No `ctx.fillText` in game-unit space** — sub-pixel font sizes (anything under ~1px) silently fail. Use `console.log` for debug output, or `pxText()` helper for user-facing text. See TODO for planned pixel-coord fix.
 - **AudioContext in Playwright** — headless Chrome suspends AudioContext and `currentTime` won't advance. Use `page.addInitScript` to override the constructor with auto-resume. Use `?play=N` instead of pressing menu keys, since `enterExperiment()` blocks on FaceMesh model loading.
-- **Exposing game state for tests** — pattern: `(window as any).__ddrArrows = arrows` in game code, then `page.evaluate(() => (window as any).__ddrArrows)` in Playwright. Lightweight way to verify wiring without parsing canvas.
+- **Exposing game state for tests** — pattern: `(window as any).__ddrArrows = arrows` in game code, then `page.evaluate(() => (window as any).__ddrArrows)` in Playwright. Lightweight way to verify wiring without parsing canvas. Additional exports: `__frameCount` (loop counter), `__rough` (rough.js module).
 - **Injecting pose data for tests** — set `(window as any).__overridePoses` before experiment starts; both camera and play-mode loops check it. Used by `overlay-demo.ts`.
 - **Playwright screenshots** — save to `.screenshots/` directory (gitignored), e.g. `filename: ".screenshots/demo.png"`
+- **rough.js near-zero arcs** — `rc.arc()` hangs when sweep angle ≈ 0 under full game-loop resource pressure. Can't reproduce standalone. Guard dynamic progress arcs with `if (progress > threshold)`.
+- **FaceMesh delegate setting ignored** — `delegate: "CPU"` vs `"GPU"` doesn't matter; XNNPACK always uses CPU in headless Chrome. Don't waste time toggling this.
+- **Body-tracking exps hang in headless** — experiments 3, 4, 6 (with `updatePose`) stall because `PoseLandmarker.detectForVideo` blocks the game loop. Face-only experiments work fine.
+- **FaceMesh inference timing is nondeterministic** — 3–9s under resource pressure. Playwright tests need 8s+ `waitForFunction` timeouts and `retries: 1`.
