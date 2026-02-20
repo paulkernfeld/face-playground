@@ -6,7 +6,9 @@ import { sage, rose, honey, stone, charcoal, lavender, sky, teal } from '../pale
 // Constants
 const NOSE_TIP = 1;
 const EYES_CLOSED_THRESHOLD = 0.5;
-const STILLNESS_THRESHOLD = 0.015; // max nose movement per frame in game units
+const STILLNESS_THRESHOLD = 0.015; // below this = perfectly still, no decay
+const DECAY_SCALE = 40; // multiplier: decay per second = (noseDelta - threshold) * scale
+const EYES_OPEN_DECAY = 3; // seconds of progress lost per second with eyes open
 const TARGET_DURATION = 10; // seconds to hold eyes closed + still
 const SMOOTH = 0.8;
 
@@ -41,8 +43,12 @@ export const mindfulness: Experiment = {
     let interruptReason: string; // why the session was interrupted
     let prevPhase: Phase; // track phase transitions for audio
 
-    // Audio state
+    // Audio state — continuous drone while eyes closed + still
     let audioCtx: AudioContext | null = null;
+    let droneOsc: OscillatorNode | null = null;
+    let droneGain: GainNode | null = null;
+    const DRONE_FREQ = 220; // Hz — low, gentle hum
+    const DRONE_VOLUME = 0.06;
 
     function getAudioCtx(): AudioContext | null {
       if (!audioCtx) {
@@ -58,49 +64,37 @@ export const mindfulness: Experiment = {
       return audioCtx;
     }
 
-    // Gentle sine sweep — soft start tone when entering active phase
-    function playStartTone() {
+    function startDrone() {
       const ctx = getAudioCtx();
-      if (!ctx) return;
-      const t = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(330, t);
-      osc.frequency.exponentialRampToValueAtTime(440, t + 0.3);
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.07, t + 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.6);
+      if (!ctx || droneOsc) return;
+      droneOsc = ctx.createOscillator();
+      droneGain = ctx.createGain();
+      droneOsc.type = 'sine';
+      droneOsc.frequency.value = DRONE_FREQ;
+      droneGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      droneGain.gain.exponentialRampToValueAtTime(DRONE_VOLUME, ctx.currentTime + 0.3);
+      droneOsc.connect(droneGain);
+      droneGain.connect(ctx.destination);
+      droneOsc.start();
     }
 
-    // Soft damped alert — interrupt tone when leaving active phase
-    function playInterruptTone() {
-      const ctx = getAudioCtx();
-      if (!ctx) return;
-      const t = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(380, t);
-      osc.frequency.exponentialRampToValueAtTime(260, t + 0.15);
-      gain.gain.setValueAtTime(0.08, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.3);
+    function stopDrone() {
+      if (!droneGain || !droneOsc || !audioCtx) return;
+      const t = audioCtx.currentTime;
+      droneGain.gain.cancelScheduledValues(t);
+      droneGain.gain.setValueAtTime(droneGain.gain.value, t);
+      droneGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      const osc = droneOsc;
+      setTimeout(() => { try { osc.stop(); } catch {} }, 300);
+      droneOsc = null;
+      droneGain = null;
     }
 
-    // Bright ding — completion tone
     function playCompleteTone() {
+      stopDrone();
       const ctx = getAudioCtx();
       if (!ctx) return;
       const t = ctx.currentTime;
-      // Two layered oscillators for a richer ding
       for (const freq of [660, 880]) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -191,45 +185,36 @@ export const mindfulness: Experiment = {
           return;
         }
 
-        if (eyesClosed && isStill) {
-          phase = 'active';
+        // Ignore eye state for now — just track stillness
+        phase = 'active';
+        interruptReason = '';
+
+        if (isStill) {
           closedStillTime += dt;
-          interruptReason = '';
-
-          if (closedStillTime > peakTime) {
-            peakTime = closedStillTime;
-          }
-
-          if (closedStillTime >= TARGET_DURATION) {
-            phase = 'complete';
-          }
         } else {
-          // Interrupted — reset timer
-          if (phase === 'active' && closedStillTime > 0.5) {
-            // Only show interrupt reason if they had a meaningful session
-            if (!eyesClosed && !isStill) {
-              interruptReason = 'eyes opened + moved';
-            } else if (!eyesClosed) {
-              interruptReason = 'eyes opened';
-            } else {
-              interruptReason = 'movement detected';
-            }
-          }
-          closedStillTime = 0;
-          phase = 'waiting';
+          const excess = noseDelta - STILLNESS_THRESHOLD;
+          const decay = excess * DECAY_SCALE * dt;
+          closedStillTime = Math.max(0, closedStillTime + dt - decay);
         }
 
-        // Play audio on phase transitions
-        if (phase !== prevPhase) {
-          if (phase === 'active' && prevPhase === 'waiting') {
-            playStartTone();
-          } else if (phase === 'waiting' && prevPhase === 'active') {
-            playInterruptTone();
-          } else if (phase === 'complete') {
-            playCompleteTone();
-          }
-          prevPhase = phase;
+        if (closedStillTime > peakTime) {
+          peakTime = closedStillTime;
         }
+
+        if (closedStillTime >= TARGET_DURATION) {
+          phase = 'complete';
+        }
+
+        // Audio: drone while making progress, stop when progress drops
+        if (phase === 'active' && closedStillTime > 0.5) {
+          startDrone();
+        } else if (closedStillTime < 0.3) {
+          stopDrone();
+        }
+        if (phase === 'complete' && prevPhase !== 'complete') {
+          playCompleteTone();
+        }
+        prevPhase = phase;
       },
 
       draw(ctx: CanvasRenderingContext2D, _w: number, _h: number) {
@@ -373,6 +358,7 @@ export const mindfulness: Experiment = {
       },
 
       cleanup() {
+        stopDrone();
         if (audioCtx) {
           audioCtx.close();
           audioCtx = null;

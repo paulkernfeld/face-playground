@@ -254,10 +254,11 @@ async function enterExperiment(expOrIndex: number | Experiment) {
   await video.play();
 
   // Init FaceLandmarker (once, reuse across experiments — fileset preloaded at boot)
+  const txt = loadingEl.querySelector(".loading-text");
   if (!landmarker) {
-    const txt = loadingEl.querySelector(".loading-text");
-    if (txt) txt.textContent = "loading face model\u2026";
+    if (txt) txt.textContent = "loading vision runtime\u2026";
     const fileset = await filesetPromise;
+    if (txt) txt.textContent = "loading face model\u2026";
     landmarker = await FaceLandmarker.createFromOptions(fileset, {
       baseOptions: {
         modelAssetPath: FACE_MODEL_URL,
@@ -272,7 +273,6 @@ async function enterExperiment(expOrIndex: number | Experiment) {
 
   // Init PoseLandmarker if this experiment needs it (lazy, one-time)
   if (currentExp.updatePose && !poseLandmarker) {
-    const txt = loadingEl.querySelector(".loading-text");
     if (txt) txt.textContent = "loading body model\u2026";
     const poseFileset = await filesetPromise;
     poseLandmarker = await PoseLandmarker.createFromOptions(poseFileset, {
