@@ -9,8 +9,13 @@ const EYES_CLOSED_THRESHOLD = 0.5;
 const STILLNESS_THRESHOLD = 0.015; // below this = perfectly still, no decay
 const DECAY_SCALE = 40; // multiplier: decay per second = (noseDelta - threshold) * scale
 const EYES_OPEN_DECAY = 3; // seconds of progress lost per second with eyes open
-const TARGET_DURATION = 10; // seconds to hold eyes closed + still
 const SMOOTH = 0.8;
+
+// Read ?duration=N from URL, default 10
+const TARGET_DURATION = (() => {
+  const p = new URLSearchParams(window.location.search).get('duration');
+  return p ? Math.max(1, Number(p)) : 10;
+})();
 
 // State type for phase tracking
 type Phase = 'waiting' | 'active' | 'complete';
@@ -144,6 +149,9 @@ export const mindfulness: Experiment = {
 
       update(face: FaceData | null, dt: number) {
         time += dt;
+
+        // Expose phase for CLI gate / tests (before early returns)
+        (window as any).__mindfulnessPhase = phase;
 
         // Breathing animation always advances (slow cycle: ~4s inhale, ~4s exhale)
         breathPhase = (breathPhase + dt / 8) % 1;
