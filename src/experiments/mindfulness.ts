@@ -156,6 +156,12 @@ export const mindfulness: Experiment = {
         // Breathing animation always advances (slow cycle: ~4s inhale, ~4s exhale)
         breathPhase = (breathPhase + dt / 8) % 1;
 
+        // No face detected for full duration → auto-complete (away doing a chore, dark room)
+        if (!hasHadFace && time >= TARGET_DURATION) {
+          phase = 'complete';
+          return;
+        }
+
         if (!face) {
           // No face detected — pause but don't reset if we were active
           if (phase === 'active') {
