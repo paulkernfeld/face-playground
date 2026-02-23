@@ -48,12 +48,14 @@ export const mindfulness: Experiment = {
     let interruptReason: string; // why the session was interrupted
     let prevPhase: Phase; // track phase transitions for audio
 
-    // Audio state — continuous drone while eyes closed + still
+    // Audio state — single oscillator, two frequencies: good (progress) vs bad (no progress)
     let audioCtx: AudioContext | null = null;
     let droneOsc: OscillatorNode | null = null;
     let droneGain: GainNode | null = null;
-    const DRONE_FREQ = 220; // Hz — low, gentle hum
+    const GOOD_FREQ = 220; // Hz — low, warm hum (progress increasing)
+    const BAD_FREQ = 330;  // Hz — higher, tense (not progressing)
     const DRONE_VOLUME = 0.06;
+    const FREQ_GLIDE = 0.3; // seconds to glide between frequencies
 
     function getAudioCtx(): AudioContext | null {
       if (!audioCtx) {
@@ -69,18 +71,28 @@ export const mindfulness: Experiment = {
       return audioCtx;
     }
 
-    function startDrone() {
+    function ensureDrone() {
       const ctx = getAudioCtx();
       if (!ctx || droneOsc) return;
       droneOsc = ctx.createOscillator();
       droneGain = ctx.createGain();
       droneOsc.type = 'sine';
-      droneOsc.frequency.value = DRONE_FREQ;
+      droneOsc.frequency.value = GOOD_FREQ;
       droneGain.gain.setValueAtTime(0.0001, ctx.currentTime);
       droneGain.gain.exponentialRampToValueAtTime(DRONE_VOLUME, ctx.currentTime + 0.3);
       droneOsc.connect(droneGain);
       droneGain.connect(ctx.destination);
       droneOsc.start();
+    }
+
+    function setDroneGood() {
+      if (!droneOsc || !audioCtx) return;
+      droneOsc.frequency.exponentialRampToValueAtTime(GOOD_FREQ, audioCtx.currentTime + FREQ_GLIDE);
+    }
+
+    function setDroneBad() {
+      if (!droneOsc || !audioCtx) return;
+      droneOsc.frequency.exponentialRampToValueAtTime(BAD_FREQ, audioCtx.currentTime + FREQ_GLIDE);
     }
 
     function stopDrone() {
@@ -226,11 +238,14 @@ export const mindfulness: Experiment = {
           phase = 'complete';
         }
 
-        // Audio: drone while making progress, stop when progress drops
-        if (phase === 'active' && closedStillTime > 0.5) {
-          startDrone();
-        } else if (closedStillTime < 0.3) {
-          stopDrone();
+        // Audio: single tone, glides between good/bad frequency
+        if (phase === 'active') {
+          ensureDrone();
+          if (eyesClosed && isStill) {
+            setDroneGood();
+          } else {
+            setDroneBad();
+          }
         }
         if (phase === 'complete' && prevPhase !== 'complete') {
           playCompleteTone();
