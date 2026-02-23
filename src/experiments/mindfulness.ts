@@ -199,13 +199,20 @@ export const mindfulness: Experiment = {
           return;
         }
 
-        // Ignore eye state for now — just track stillness
+        // Eyes must close to leave waiting phase
+        if (!eyesClosed && phase === 'waiting') {
+          return;
+        }
         phase = 'active';
         interruptReason = '';
 
-        if (isStill) {
+        if (eyesClosed && isStill) {
           closedStillTime += dt;
+        } else if (!eyesClosed) {
+          // Eyes open — decay progress
+          closedStillTime = Math.max(0, closedStillTime - EYES_OPEN_DECAY * dt);
         } else {
+          // Eyes closed but moving — partial progress with motion decay
           const excess = noseDelta - STILLNESS_THRESHOLD;
           const decay = excess * DECAY_SCALE * dt;
           closedStillTime = Math.max(0, closedStillTime + dt - decay);
