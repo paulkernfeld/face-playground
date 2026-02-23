@@ -35,6 +35,7 @@ export const experimentColors = [
   terra,     // yoga
   cream,     // posture
   sage,      // mindfulness
+  rose,      // heartbeat
 ];
 
 // Body creature palettes (per-person in multi-person tracking)

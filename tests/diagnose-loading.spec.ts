@@ -267,7 +267,7 @@ test.describe("Loading diagnostics", () => {
   });
 
   test("E — All experiments smoke test", async ({ page }) => {
-    // 30s for first experiment (model load) + 10s each for remaining 7 + buffer
+    // 30s for first experiment (model load) + 10s each for remaining 8 + buffer
     test.setTimeout(120_000);
 
     // Intercept @latest → pinned (so version drift doesn't block this test)
@@ -286,7 +286,7 @@ test.describe("Loading diagnostics", () => {
       error?: string;
     }> = [];
 
-    for (let exp = 1; exp <= 8; exp++) {
+    for (let exp = 1; exp <= 9; exp++) {
       const errors: string[] = [];
       const errorHandler = (err: Error) => errors.push(err.message);
       page.on("pageerror", errorHandler);
@@ -328,7 +328,7 @@ test.describe("Loading diagnostics", () => {
       // If first fails, skip the rest to save time.
       if (exp === 1 && !loaded) {
         console.log("  Skipping remaining experiments — first one failed.");
-        for (let skip = 2; skip <= 8; skip++) {
+        for (let skip = 2; skip <= 9; skip++) {
           results.push({ exp: skip, loaded: false, elapsed: "0", error: "skipped" });
         }
         break;
@@ -340,7 +340,7 @@ test.describe("Loading diagnostics", () => {
     if (failed.length === 0) {
       test.info().annotations.push({
         type: "diagnosis",
-        description: "All 8 experiments loaded successfully.",
+        description: "All 9 experiments loaded successfully.",
       });
     } else if (failed.length === results.length) {
       test.info().annotations.push({
@@ -350,7 +350,7 @@ test.describe("Loading diagnostics", () => {
     } else {
       test.info().annotations.push({
         type: "diagnosis",
-        description: `${failed.length}/8 experiments failed: ${failed.map((r) => `exp=${r.exp}`).join(", ")}`,
+        description: `${failed.length}/9 experiments failed: ${failed.map((r) => `exp=${r.exp}`).join(", ")}`,
       });
     }
 
