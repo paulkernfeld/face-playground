@@ -4,7 +4,8 @@ import { pxText } from '../px-text';
 import { lavender, charcoal, stone, honey } from '../palette';
 
 const CALIBRATE_TIME = 2.0;
-const MOVE_THRESHOLD = 0.15;
+const MOVE_THRESHOLD = 0.05;
+const BLINK_THRESHOLD = 0.1;
 
 const GAZE_SHAPES = [
   'eyeLookUpLeft', 'eyeLookDownLeft', 'eyeLookInLeft', 'eyeLookOutLeft',
@@ -48,6 +49,10 @@ export const kasina: Experiment = {
       update(face: FaceData | null, dt: number) {
         if (!face) return;
 
+        const blinkL = face.blendshapes.get("eyeBlinkLeft") ?? 0;
+        const blinkR = face.blendshapes.get("eyeBlinkRight") ?? 0;
+        const blinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
+
         if (phase === 'calibrating') {
           calibrateTimer += dt;
           if (calibrateTimer >= CALIBRATE_TIME) {
@@ -55,6 +60,11 @@ export const kasina: Experiment = {
             phase = 'active';
             streak = 0;
           }
+          return;
+        }
+
+        if (blinking) {
+          streak += dt;
           return;
         }
 
@@ -80,28 +90,27 @@ export const kasina: Experiment = {
 
       draw(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
         const cx = gw / 2;
-        const cy = gh / 2;
+        const cy = gh * 0.25;
 
         // fixation dot
         const dotColor = phase === 'calibrating' ? honey : lavender;
         rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
 
         if (phase === 'calibrating') {
-          const remaining = Math.max(0, CALIBRATE_TIME - calibrateTimer).toFixed(1);
+          const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
           pxText(ctx, `look at the dot... ${remaining}s`, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
         } else {
-          pxText(ctx, streak.toFixed(1) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
-        }
-
-        if (best > 0) {
-          pxText(ctx, `best: ${best.toFixed(1)}s`, cx, gh - 0.5, '0.35px Fredoka', stone, 'center');
+          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
+          if (best > 0) {
+            pxText(ctx, `best: ${Math.floor(best)}s`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
+          }
         }
       },
 
       demo() {
         phase = 'active';
-        streak = 4.2;
-        best = 7.8;
+        streak = 4;
+        best = 7;
       },
 
       cleanup() {},
