@@ -14,7 +14,7 @@ import { setupFakeCamera } from "./fake-camera";
 // game loop under headless Chrome, so the angles HUD never updates.
 const bodyTrackingExps = new Set([3, 4, 6]);
 
-for (const exp of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+for (const exp of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
   test(`exp=${exp}: loads and detects face`, async ({ page }) => {
     test.setTimeout(15_000);
 
