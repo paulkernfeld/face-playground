@@ -5,7 +5,8 @@ import { lavender, charcoal, stone, honey } from '../palette';
 
 const CALIBRATE_TIME = 2.0;
 const MOVE_THRESHOLD = 0.05;
-const BLINK_THRESHOLD = 0.1;
+const BLINK_THRESHOLD = 0.2;
+const MAX_BLINK_TIME = 0.5;
 
 const GAZE_SHAPES = [
   'eyeLookUpLeft', 'eyeLookDownLeft', 'eyeLookInLeft', 'eyeLookOutLeft',
@@ -26,6 +27,15 @@ export const kasina: Experiment = {
     let w: number;
     let h: number;
     let rc: GameRoughCanvas;
+    let blinkDuration: number;
+    function resetStreak() {
+      if (streak > best) best = streak;
+      phase = 'calibrating';
+      calibrateTimer = 0;
+      streak = 0;
+      blinkDuration = 0;
+    }
+
     function readGaze(face: FaceData): Map<string, number> {
       const m = new Map<string, number>();
       for (const name of GAZE_SHAPES) {
@@ -44,10 +54,14 @@ export const kasina: Experiment = {
         baseline = new Map();
         streak = 0;
         best = 0;
+        blinkDuration = 0;
       },
 
       update(face: FaceData | null, dt: number) {
-        if (!face) return;
+        if (!face) {
+          if (phase === 'active') resetStreak();
+          return;
+        }
 
         const blinkL = face.blendshapes.get("eyeBlinkLeft") ?? 0;
         const blinkR = face.blendshapes.get("eyeBlinkRight") ?? 0;
@@ -64,9 +78,15 @@ export const kasina: Experiment = {
         }
 
         if (blinking) {
-          streak += dt;
+          blinkDuration += dt;
+          if (blinkDuration > MAX_BLINK_TIME) {
+            resetStreak();
+          } else {
+            streak += dt;
+          }
           return;
         }
+        blinkDuration = 0;
 
         const current = readGaze(face);
         let moved = false;
@@ -79,10 +99,7 @@ export const kasina: Experiment = {
         }
 
         if (moved) {
-          if (streak > best) best = streak;
-          phase = 'calibrating';
-          calibrateTimer = 0;
-          streak = 0;
+          resetStreak();
         } else {
           streak += dt;
         }
