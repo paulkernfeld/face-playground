@@ -1,10 +1,10 @@
 import type { Experiment, FaceData } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { lavender, charcoal, stone, honey } from '../palette';
+import { lavender, cream, stone, honey } from '../palette';
 
 const CALIBRATE_TIME = 2.0;
-const MOVE_THRESHOLD = 0.05;
+const MOVE_THRESHOLD = 0.1;
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_TIME = 0.5;
 
@@ -13,7 +13,7 @@ const GAZE_SHAPES = [
   'eyeLookUpRight', 'eyeLookDownRight', 'eyeLookInRight', 'eyeLookOutRight',
 ] as const;
 
-type Phase = 'calibrating' | 'active';
+type Phase = 'waiting' | 'calibrating' | 'active';
 
 export const kasina: Experiment = {
   name: "kasina",
@@ -28,10 +28,20 @@ export const kasina: Experiment = {
     let h: number;
     let rc: GameRoughCanvas;
     let blinkDuration: number;
-    function resetStreak() {
-      if (streak > best) best = streak;
+    let lastResetReason: string;
+    let isBlinking: boolean;
+    let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+    function startCalibration() {
       phase = 'calibrating';
       calibrateTimer = 0;
+      blinkDuration = 0;
+    }
+
+    function resetStreak(reason: string) {
+      if (streak > best) best = streak;
+      lastResetReason = reason;
+      phase = 'waiting';
       streak = 0;
       blinkDuration = 0;
     }
@@ -49,23 +59,37 @@ export const kasina: Experiment = {
         w = gw;
         h = gh;
         rc = new GameRoughCanvas(ctx.canvas);
-        phase = 'calibrating';
+        phase = 'waiting';
         calibrateTimer = 0;
         baseline = new Map();
         streak = 0;
         best = 0;
         blinkDuration = 0;
+        lastResetReason = '';
+        isBlinking = false;
+
+        if (keyHandler) document.removeEventListener('keydown', keyHandler);
+        keyHandler = (e: KeyboardEvent) => {
+          if (e.code === 'Space' && phase === 'waiting') {
+            e.preventDefault();
+            startCalibration();
+          }
+        };
+        document.addEventListener('keydown', keyHandler);
       },
 
       update(face: FaceData | null, dt: number) {
+        if (phase === 'waiting') return;
+
         if (!face) {
-          if (phase === 'active') resetStreak();
+          if (phase === 'active') resetStreak('no face detected');
           return;
         }
 
         const blinkL = face.blendshapes.get("eyeBlinkLeft") ?? 0;
         const blinkR = face.blendshapes.get("eyeBlinkRight") ?? 0;
         const blinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
+        isBlinking = blinking;
 
         if (phase === 'calibrating') {
           calibrateTimer += dt;
@@ -80,7 +104,7 @@ export const kasina: Experiment = {
         if (blinking) {
           blinkDuration += dt;
           if (blinkDuration > MAX_BLINK_TIME) {
-            resetStreak();
+            resetStreak('eyes closed too long');
           } else {
             streak += dt;
           }
@@ -89,40 +113,54 @@ export const kasina: Experiment = {
         blinkDuration = 0;
 
         const current = readGaze(face);
-        let moved = false;
+        let triggerName = '';
         for (const name of GAZE_SHAPES) {
           const diff = Math.abs((current.get(name) ?? 0) - (baseline.get(name) ?? 0));
           if (diff > MOVE_THRESHOLD) {
-            moved = true;
+            triggerName = name;
             break;
           }
         }
 
-        if (moved) {
-          resetStreak();
+        if (triggerName) {
+          const val = current.get(triggerName) ?? 0;
+          const base = baseline.get(triggerName) ?? 0;
+          resetStreak(`${triggerName}: ${base.toFixed(3)} → ${val.toFixed(3)}`);
         } else {
           streak += dt;
         }
       },
 
       draw(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, gw, gh);
+
         const cx = gw / 2;
         const cy = gh * 0.25;
 
         // fixation dot
         const dotColor = phase === 'calibrating' ? honey : lavender;
-        rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
+        rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: stone, strokeWidth: 0.02 });
 
-        if (phase === 'calibrating') {
+        if (phase === 'waiting') {
+          const msg = lastResetReason ? `${lastResetReason} — space to restart` : 'press space to start';
+          pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
+        } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
           pxText(ctx, `look at the dot... ${remaining}s`, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
+        } else if (isBlinking) {
+          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
         } else {
-          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
+          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
           if (best > 0) {
             pxText(ctx, `best: ${Math.floor(best)}s`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
           }
         }
       },
+
+      extraButtons: [
+        { label: 'start', key: ' ', onClick: () => { if (phase === 'waiting') startCalibration(); } },
+      ],
 
       demo() {
         phase = 'active';
@@ -130,7 +168,12 @@ export const kasina: Experiment = {
         best = 7;
       },
 
-      cleanup() {},
+      cleanup() {
+        if (keyHandler) {
+          document.removeEventListener('keydown', keyHandler);
+          keyHandler = null;
+        }
+      },
     };
   })(),
 };
