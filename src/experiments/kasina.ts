@@ -1,7 +1,7 @@
-import type { Experiment, FaceData } from "../types";
+import type { Experiment, FaceData, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { lavender, cream, stone, honey } from '../palette';
+import { lavender, cream, stone, honey, rose } from '../palette';
 
 const CALIBRATE_TIME = 2.0;
 const MOVE_THRESHOLD = 0.1;
@@ -36,6 +36,8 @@ export const kasina: Experiment = {
     let moveDuration: number;
     let moveOffender: string;
     let loseSnapshot: HTMLCanvasElement | null;
+    let loseLandmarks: Landmarks | null;
+    let lastLandmarks: Landmarks | null;
     let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
     function captureVideo(): HTMLCanvasElement | null {
@@ -58,6 +60,7 @@ export const kasina: Experiment = {
       if (streak > best) best = streak;
       lastResetReason = reason;
       loseSnapshot = captureVideo();
+      loseLandmarks = lastLandmarks;
       phase = 'waiting';
       streak = 0;
       blinkDuration = 0;
@@ -88,6 +91,8 @@ export const kasina: Experiment = {
         moveDuration = 0;
         moveOffender = '';
         loseSnapshot = null;
+        loseLandmarks = null;
+        lastLandmarks = null;
 
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
         keyHandler = (e: KeyboardEvent) => {
@@ -106,6 +111,8 @@ export const kasina: Experiment = {
           if (phase === 'active') resetStreak('no face detected');
           return;
         }
+
+        lastLandmarks = face.landmarks;
 
         const blinkL = face.blendshapes.get("eyeBlinkLeft") ?? 0;
         const blinkR = face.blendshapes.get("eyeBlinkRight") ?? 0;
@@ -169,9 +176,11 @@ export const kasina: Experiment = {
         }
       },
 
-      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, gw, gh);
+      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, debug?: boolean) {
+        if (!debug) {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, gw, gh);
+        }
 
         const cx = gw / 2;
         const cy = gh * 0.25;
@@ -186,7 +195,23 @@ export const kasina: Experiment = {
           if (loseSnapshot) {
             const snapW = 4;
             const snapH = snapW * (loseSnapshot.height / loseSnapshot.width);
-            ctx.drawImage(loseSnapshot, cx - snapW / 2, cy + 2, snapW, snapH);
+            const snapX = cx - snapW / 2;
+            const snapY = cy + 2;
+            ctx.drawImage(loseSnapshot, snapX, snapY, snapW, snapH);
+
+            if (loseLandmarks) {
+              for (let i = 0; i < loseLandmarks.length; i++) {
+                const lm = loseLandmarks[i];
+                const x = snapX + lm.x * snapW;
+                const y = snapY + lm.y * snapH;
+                const isIris = i >= 468 && i <= 477;
+                ctx.fillStyle = isIris ? rose : stone;
+                const r = isIris ? 0.04 : 0.015;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
           }
         } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
