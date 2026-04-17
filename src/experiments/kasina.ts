@@ -35,7 +35,18 @@ export const kasina: Experiment = {
     let postBlinkTimer: number;
     let moveDuration: number;
     let moveOffender: string;
+    let loseSnapshot: HTMLCanvasElement | null;
     let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+    function captureVideo(): HTMLCanvasElement | null {
+      const video = document.getElementById('webcam') as HTMLVideoElement | null;
+      if (!video || video.readyState < 2) return null;
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      c.getContext('2d')!.drawImage(video, 0, 0);
+      return c;
+    }
 
     function startCalibration() {
       phase = 'calibrating';
@@ -46,6 +57,7 @@ export const kasina: Experiment = {
     function resetStreak(reason: string) {
       if (streak > best) best = streak;
       lastResetReason = reason;
+      loseSnapshot = captureVideo();
       phase = 'waiting';
       streak = 0;
       blinkDuration = 0;
@@ -75,6 +87,7 @@ export const kasina: Experiment = {
         postBlinkTimer = 0;
         moveDuration = 0;
         moveOffender = '';
+        loseSnapshot = null;
 
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
         keyHandler = (e: KeyboardEvent) => {
@@ -170,6 +183,11 @@ export const kasina: Experiment = {
         if (phase === 'waiting') {
           const msg = lastResetReason ? `${lastResetReason} — space to restart` : 'press space to start';
           pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
+          if (loseSnapshot) {
+            const snapW = 4;
+            const snapH = snapW * (loseSnapshot.height / loseSnapshot.width);
+            ctx.drawImage(loseSnapshot, cx - snapW / 2, cy + 2, snapW, snapH);
+          }
         } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
           pxText(ctx, `look at the dot... ${remaining}s`, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
