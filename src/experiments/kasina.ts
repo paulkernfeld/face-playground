@@ -102,48 +102,48 @@ export const kasina: Experiment = {
       }
     }
 
-    const EYE_INDICES = [33, 263, 159, 145, 386, 374];
+    // Left eye: outer=33, inner=133, top=159, bottom=145, iris=468-472
+    // Right eye: outer=263, inner=362, top=386, bottom=374, iris=473-477
+    const LEFT_EYE_BOUNDS = [33, 133, 159, 145];
+    const RIGHT_EYE_BOUNDS = [263, 362, 386, 374];
 
     // Per-eye gaze blendshape → direction landmark mapping
-    // Each entry: [blendshape name, eye center landmark, direction landmark]
-    const GAZE_DIRS: [string, number, number][] = [
-      ['eyeLookUpLeft', 468, 159],     // left eye up
-      ['eyeLookDownLeft', 468, 145],   // left eye down
-      ['eyeLookInLeft', 468, 133],     // left eye in (toward nose)
-      ['eyeLookOutLeft', 468, 33],     // left eye out
-      ['eyeLookUpRight', 473, 386],    // right eye up
-      ['eyeLookDownRight', 473, 374],  // right eye down
-      ['eyeLookInRight', 473, 362],    // right eye in (toward nose)
-      ['eyeLookOutRight', 473, 263],   // right eye out
+    const LEFT_GAZE_DIRS: [string, number, number][] = [
+      ['eyeLookUpLeft', 468, 159],
+      ['eyeLookDownLeft', 468, 145],
+      ['eyeLookInLeft', 468, 133],
+      ['eyeLookOutLeft', 468, 33],
+    ];
+    const RIGHT_GAZE_DIRS: [string, number, number][] = [
+      ['eyeLookUpRight', 473, 386],
+      ['eyeLookDownRight', 473, 374],
+      ['eyeLookInRight', 473, 362],
+      ['eyeLookOutRight', 473, 263],
     ];
 
-    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, gaze?: Map<string, number>, offender?: string) {
-      const eyePts = EYE_INDICES.map(i => landmarks[i]);
+    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, boundIndices: number[], gazeDirs: [string, number, number][], gaze?: Map<string, number>, offender?: string) {
+      const eyePts = boundIndices.map(i => landmarks[i]);
       const minX = Math.min(...eyePts.map(p => p.x));
       const maxX = Math.max(...eyePts.map(p => p.x));
       const minY = Math.min(...eyePts.map(p => p.y));
       const maxY = Math.max(...eyePts.map(p => p.y));
-      const eyeH = maxY - minY;
-      const padX = eyeH * 0.3;
-      const padY = eyeH * 0.5;
 
-      const sx = Math.max(0, toRawVideo(minX - padX, gw, snapshot.width));
-      const sy = Math.max(0, toRawVideo(minY - padY, gh, snapshot.height));
-      const sx2 = Math.min(snapshot.width, toRawVideo(maxX + padX, gw, snapshot.width));
-      const sy2 = Math.min(snapshot.height, toRawVideo(maxY + padY, gh, snapshot.height));
+      const sx = Math.max(0, toRawVideo(minX, gw, snapshot.width));
+      const sy = Math.max(0, toRawVideo(minY, gh, snapshot.height));
+      const sx2 = Math.min(snapshot.width, toRawVideo(maxX, gw, snapshot.width));
+      const sy2 = Math.min(snapshot.height, toRawVideo(maxY, gh, snapshot.height));
       const sw = sx2 - sx;
       const sh = sy2 - sy;
       const drawH = drawW * (sh / sw);
 
       ctx.drawImage(snapshot, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
 
-      const cropMinX = Math.max(0, minX - padX);
-      const cropMinY = Math.max(0, minY - padY);
-      const cropW = (maxX - minX) + padX * 2;
-      const cropH = (maxY - minY) + padY * 2;
-      // Gaze direction dots (teal, drawn under iris dots)
+      const cropMinX = minX;
+      const cropMinY = minY;
+      const cropW = maxX - minX;
+      const cropH = maxY - minY;
       if (gaze) {
-        for (const [name, centerIdx, dirIdx] of GAZE_DIRS) {
+        for (const [name, centerIdx, dirIdx] of gazeDirs) {
           const val = gaze.get(name) ?? 0;
           if (val < 0.01) continue;
           const center = landmarks[centerIdx];
@@ -320,15 +320,20 @@ export const kasina: Experiment = {
           const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
           pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
           const cropY = cy + 2;
-          const cropW = 3.5;
-          const gap = 0.5;
+          const eyeW = 3.5;
+          const gap = 0.3;
+          const totalW = eyeW * 2 + gap;
+          const rowGap = 0.3;
           if (calibSnapshot && calibLandmarks) {
-            pxText(ctx, 'calibrated', cx - gap / 2 - cropW / 2, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - gap / 2 - cropW, cropY, cropW, gw, gh, calibGaze, loseOffender);
-          }
-          if (loseSnapshot && loseLandmarks) {
-            pxText(ctx, 'lost', cx + gap / 2 + cropW / 2, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx + gap / 2, cropY, cropW, gw, gh, loseGaze, loseOffender);
+            pxText(ctx, 'calibrated', cx, cropY - 0.3, '0.25px Fredoka', stone, 'center');
+            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, LEFT_EYE_BOUNDS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
+            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, RIGHT_EYE_BOUNDS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
+            if (loseSnapshot && loseLandmarks) {
+              const lostY = cropY + leftH + rowGap;
+              pxText(ctx, 'lost', cx, lostY - 0.3, '0.25px Fredoka', stone, 'center');
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, LEFT_EYE_BOUNDS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, RIGHT_EYE_BOUNDS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
+            }
           }
         } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
