@@ -41,6 +41,8 @@ export const kasina: Experiment = {
     let postBlinkTimer: number;
     let moveDuration: number;
     let moveOffender: string;
+    let lastRoundTime: number;
+    let loseOffender: string;
     let calibSnapshot: HTMLCanvasElement | null;
     let calibLandmarks: Landmarks | null;
     let calibGaze: Map<string, number>;
@@ -68,12 +70,14 @@ export const kasina: Experiment = {
       blinkDuration = 0;
     }
 
-    function resetStreak(reason: string) {
+    function resetStreak(reason: string, offender?: string) {
+      lastRoundTime = streak;
       if (streak > best) best = streak;
       lastResetReason = reason;
       loseSnapshot = captureVideo();
       loseLandmarks = lastLandmarks;
       loseGaze = lastGaze;
+      loseOffender = offender ?? '';
       phase = 'waiting';
       streak = 0;
       blinkDuration = 0;
@@ -113,7 +117,7 @@ export const kasina: Experiment = {
       ['eyeLookOutRight', 473, 263],   // right eye out
     ];
 
-    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, gaze?: Map<string, number>) {
+    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, gaze?: Map<string, number>, offender?: string) {
       const eyePts = EYE_INDICES.map(i => landmarks[i]);
       const minX = Math.min(...eyePts.map(p => p.x));
       const maxX = Math.max(...eyePts.map(p => p.x));
@@ -149,7 +153,7 @@ export const kasina: Experiment = {
           const nx = (lx - cropMinX) / cropW;
           const ny = (ly - cropMinY) / cropH;
           if (nx < 0 || nx > 1 || ny < 0 || ny > 1) continue;
-          ctx.fillStyle = teal;
+          ctx.fillStyle = (offender && name === offender) ? rose : teal;
           ctx.beginPath();
           ctx.arc(drawX + nx * drawW, drawY + ny * drawH, 0.03, 0, Math.PI * 2);
           ctx.fill();
@@ -163,7 +167,7 @@ export const kasina: Experiment = {
         const ny = (lm.y - cropMinY) / cropH;
         if (nx < 0 || nx > 1 || ny < 0 || ny > 1) continue;
         const isIris = i >= 468 && i <= 477;
-        ctx.fillStyle = isIris ? rose : stone;
+        ctx.fillStyle = isIris ? lavender : stone;
         const r = isIris ? 0.03 : 0.015;
         ctx.beginPath();
         ctx.arc(drawX + nx * drawW, drawY + ny * drawH, r, 0, Math.PI * 2);
@@ -194,6 +198,8 @@ export const kasina: Experiment = {
         postBlinkTimer = 0;
         moveDuration = 0;
         moveOffender = '';
+        lastRoundTime = 0;
+        loseOffender = '';
         calibSnapshot = null;
         calibLandmarks = null;
         calibGaze = new Map();
@@ -282,7 +288,7 @@ export const kasina: Experiment = {
           if (moveDuration >= MOVE_GRACE) {
             const val = current.get(moveOffender) ?? 0;
             const base = baseline.get(moveOffender) ?? 0;
-            resetStreak(`${moveOffender}: ${base.toFixed(3)} → ${val.toFixed(3)}`);
+            resetStreak(`${moveOffender}: ${base.toFixed(3)} → ${val.toFixed(3)}`, moveOffender);
           } else {
             streak += dt;
           }
@@ -307,6 +313,9 @@ export const kasina: Experiment = {
         rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: stone, strokeWidth: 0.02 });
 
         if (phase === 'waiting') {
+          if (lastRoundTime > 0) {
+            pxText(ctx, `${Math.floor(lastRoundTime)}s`, cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
+          }
           const startMsg = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
           pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
@@ -315,11 +324,11 @@ export const kasina: Experiment = {
           const gap = 0.5;
           if (calibSnapshot && calibLandmarks) {
             pxText(ctx, 'calibrated', cx - gap / 2 - cropW / 2, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - gap / 2 - cropW, cropY, cropW, gw, gh, calibGaze);
+            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - gap / 2 - cropW, cropY, cropW, gw, gh, calibGaze, loseOffender);
           }
           if (loseSnapshot && loseLandmarks) {
             pxText(ctx, 'lost', cx + gap / 2 + cropW / 2, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx + gap / 2, cropY, cropW, gw, gh, loseGaze);
+            drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx + gap / 2, cropY, cropW, gw, gh, loseGaze, loseOffender);
           }
         } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
