@@ -7,6 +7,8 @@ const CALIBRATE_TIME = 2.0;
 const MOVE_THRESHOLD = 0.1;
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_TIME = 0.5;
+const POST_BLINK_GRACE = 0.25;
+const MOVE_GRACE = 0.25;
 
 const GAZE_SHAPES = [
   'eyeLookUpLeft', 'eyeLookDownLeft', 'eyeLookInLeft', 'eyeLookOutLeft',
@@ -30,6 +32,9 @@ export const kasina: Experiment = {
     let blinkDuration: number;
     let lastResetReason: string;
     let isBlinking: boolean;
+    let postBlinkTimer: number;
+    let moveDuration: number;
+    let moveOffender: string;
     let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
     function startCalibration() {
@@ -67,6 +72,9 @@ export const kasina: Experiment = {
         blinkDuration = 0;
         lastResetReason = '';
         isBlinking = false;
+        postBlinkTimer = 0;
+        moveDuration = 0;
+        moveOffender = '';
 
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
         keyHandler = (e: KeyboardEvent) => {
@@ -103,6 +111,7 @@ export const kasina: Experiment = {
 
         if (blinking) {
           blinkDuration += dt;
+          postBlinkTimer = POST_BLINK_GRACE;
           if (blinkDuration > MAX_BLINK_TIME) {
             resetStreak('eyes closed too long');
           } else {
@@ -112,21 +121,37 @@ export const kasina: Experiment = {
         }
         blinkDuration = 0;
 
+        if (postBlinkTimer > 0) {
+          postBlinkTimer -= dt;
+          streak += dt;
+          return;
+        }
+
         const current = readGaze(face);
-        let triggerName = '';
+        let outOfBounds = false;
+        let offender = '';
         for (const name of GAZE_SHAPES) {
           const diff = Math.abs((current.get(name) ?? 0) - (baseline.get(name) ?? 0));
           if (diff > MOVE_THRESHOLD) {
-            triggerName = name;
+            outOfBounds = true;
+            offender = name;
             break;
           }
         }
 
-        if (triggerName) {
-          const val = current.get(triggerName) ?? 0;
-          const base = baseline.get(triggerName) ?? 0;
-          resetStreak(`${triggerName}: ${base.toFixed(3)} → ${val.toFixed(3)}`);
+        if (outOfBounds) {
+          moveOffender = offender;
+          moveDuration += dt;
+          if (moveDuration >= MOVE_GRACE) {
+            const val = current.get(moveOffender) ?? 0;
+            const base = baseline.get(moveOffender) ?? 0;
+            resetStreak(`${moveOffender}: ${base.toFixed(3)} → ${val.toFixed(3)}`);
+          } else {
+            streak += dt;
+          }
         } else {
+          moveDuration = 0;
+          moveOffender = '';
           streak += dt;
         }
       },
