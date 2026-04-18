@@ -1,14 +1,74 @@
 import type { Experiment, FaceData, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { lavender, cream, stone, honey, rose, teal } from '../palette';
+import { lavender, charcoal, stone, honey, rose, teal } from '../palette';
 
 const CALIBRATE_TIME = 2.0;
-const MOVE_THRESHOLD = 0.2;
+const MOVE_THRESHOLD = 0.15;
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_TIME = 0.5;
 const POST_BLINK_GRACE = 0.25;
-const MOVE_GRACE = 0.25;
+const MOVE_GRACE = 0.15;
+
+const LEVELS: [number, string][] = [
+  [8 * 60 * 60, 'buddha'],
+  [5 * 60 * 60, 'guanyin'],
+  [3 * 60 * 60, 'tara'],
+  [2 * 60 * 60, 'jizo'],
+  [80 * 60, 'manjushri'],
+  [50 * 60, 'arhat'],
+  [30 * 60, 'anagami'],
+  [20 * 60, 'sakadagami'],
+  [13 * 60, 'sotapanna'],
+  [8 * 60, 'garuda'],
+  [5 * 60, 'naga'],
+  [3 * 60, 'asura'],
+  [2 * 60, 'yaksha'],
+  [80, 'dragon'],
+  [50, 'tiger'],
+  [30, 'wolf'],
+  [20, 'horse'],
+  [13, 'monkey'],
+  [8, 'cat'],
+  [5, 'pigeon'],
+  [3, 'rat'],
+  [2, 'goldfish'],
+  [0, 'mosquito'],
+];
+
+function getLevel(seconds: number): string {
+  for (const [threshold, label] of LEVELS) {
+    if (seconds >= threshold) return label;
+  }
+  return 'noob';
+}
+
+enum Gaze {
+  UpLeft = 'eyeLookUpLeft',
+  DownLeft = 'eyeLookDownLeft',
+  InLeft = 'eyeLookInLeft',
+  OutLeft = 'eyeLookOutLeft',
+  UpRight = 'eyeLookUpRight',
+  DownRight = 'eyeLookDownRight',
+  InRight = 'eyeLookInRight',
+  OutRight = 'eyeLookOutRight',
+}
+
+const GAZE_SHAPES = Object.values(Gaze);
+
+function describeGaze(g: Gaze, positive: boolean): string {
+  const eye = g.endsWith('Left') ? 'L' : 'R';
+  switch (g) {
+    case Gaze.UpLeft:    return positive ? `up (${eye})`    : `down (${eye})`;
+    case Gaze.DownLeft:  return positive ? `down (${eye})`  : `up (${eye})`;
+    case Gaze.InLeft:    return positive ? `right (${eye})` : `left (${eye})`;
+    case Gaze.OutLeft:   return positive ? `left (${eye})`  : `right (${eye})`;
+    case Gaze.UpRight:   return positive ? `up (${eye})`    : `down (${eye})`;
+    case Gaze.DownRight: return positive ? `down (${eye})`  : `up (${eye})`;
+    case Gaze.InRight:   return positive ? `left (${eye})`  : `right (${eye})`;
+    case Gaze.OutRight:  return positive ? `right (${eye})` : `left (${eye})`;
+  }
+}
 
 // main.ts remaps landmarks with 5% margin crop — reverse it to get raw video coords
 const MARGIN = 0.05;
@@ -17,11 +77,6 @@ function toRawVideo(gameVal: number, gameSize: number, videoSize: number): numbe
   const raw = normalized * (1 - 2 * MARGIN) + MARGIN; // 0..1 in raw video space
   return raw * videoSize;
 }
-
-const GAZE_SHAPES = [
-  'eyeLookUpLeft', 'eyeLookDownLeft', 'eyeLookInLeft', 'eyeLookOutLeft',
-  'eyeLookUpRight', 'eyeLookDownRight', 'eyeLookInRight', 'eyeLookOutRight',
-] as const;
 
 type Phase = 'waiting' | 'calibrating' | 'active';
 
@@ -40,9 +95,10 @@ export const kasina: Experiment = {
     let isBlinking: boolean;
     let postBlinkTimer: number;
     let moveDuration: number;
-    let moveOffender: string;
+    let moveOffender: Gaze | '';
+    let gazeWarning: string;
     let lastRoundTime: number;
-    let loseOffender: string;
+    let loseOffender: Gaze | '';
     let calibSnapshot: HTMLCanvasElement | null;
     let calibLandmarks: Landmarks | null;
     let calibGaze: Map<string, number>;
@@ -70,7 +126,7 @@ export const kasina: Experiment = {
       blinkDuration = 0;
     }
 
-    function resetStreak(reason: string, offender?: string) {
+    function resetStreak(reason: string, offender?: Gaze) {
       lastRoundTime = streak;
       if (streak > best) best = streak;
       lastResetReason = reason;
@@ -102,31 +158,36 @@ export const kasina: Experiment = {
       }
     }
 
-    // Left eye: outer=33, inner=133, top=159, bottom=145, iris=468-472
-    // Right eye: outer=263, inner=362, top=386, bottom=374, iris=473-477
-    const LEFT_EYE_BOUNDS = [33, 133, 159, 145];
-    const RIGHT_EYE_BOUNDS = [263, 362, 386, 374];
+    // Left eye: outer=33, inner=133; Right eye: outer=263, inner=362
+    const LEFT_EYE_CORNERS = [33, 133] as const;
+    const RIGHT_EYE_CORNERS = [263, 362] as const;
 
     // Per-eye gaze blendshape → direction landmark mapping
-    const LEFT_GAZE_DIRS: [string, number, number][] = [
-      ['eyeLookUpLeft', 468, 159],
-      ['eyeLookDownLeft', 468, 145],
-      ['eyeLookInLeft', 468, 133],
-      ['eyeLookOutLeft', 468, 33],
+    // Per-eye gaze: [blendshape, dx, dy in mirrored draw space]
+    const LEFT_GAZE_DIRS: [Gaze, number, number][] = [
+      [Gaze.UpLeft, 0, -1],
+      [Gaze.DownLeft, 0, 1],
+      [Gaze.InLeft, 1, 0],     // in = toward nose = looking right = draws left in mirror
+      [Gaze.OutLeft, -1, 0],   // out = away from nose = looking left = draws right in mirror
     ];
-    const RIGHT_GAZE_DIRS: [string, number, number][] = [
-      ['eyeLookUpRight', 473, 386],
-      ['eyeLookDownRight', 473, 374],
-      ['eyeLookInRight', 473, 362],
-      ['eyeLookOutRight', 473, 263],
+    const RIGHT_GAZE_DIRS: [Gaze, number, number][] = [
+      [Gaze.UpRight, 0, -1],
+      [Gaze.DownRight, 0, 1],
+      [Gaze.InRight, -1, 0],   // in = toward nose = looking left = draws right in mirror
+      [Gaze.OutRight, 1, 0],   // out = away from nose = looking right = draws left in mirror
     ];
 
-    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, boundIndices: number[], gazeDirs: [string, number, number][], gaze?: Map<string, number>, offender?: string) {
-      const eyePts = boundIndices.map(i => landmarks[i]);
-      const minX = Math.min(...eyePts.map(p => p.x));
-      const maxX = Math.max(...eyePts.map(p => p.x));
-      const minY = Math.min(...eyePts.map(p => p.y));
-      const maxY = Math.max(...eyePts.map(p => p.y));
+    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, corners: readonly [number, number], gazeDirs: [Gaze, number, number][], gaze?: Map<string, number>, offender?: Gaze | '') {
+      const outer = landmarks[corners[0]];
+      const inner = landmarks[corners[1]];
+      const eyeCx = (outer.x + inner.x) / 2;
+      const eyeCy = (outer.y + inner.y) / 2;
+      const eyeWidth = Math.abs(outer.x - inner.x);
+      const eyeHeight = eyeWidth / 3;
+      const minX = eyeCx - eyeWidth / 2;
+      const maxX = eyeCx + eyeWidth / 2;
+      const minY = eyeCy - eyeHeight / 2;
+      const maxY = eyeCy + eyeHeight / 2;
 
       const sx = Math.max(0, toRawVideo(minX, gw, snapshot.width));
       const sy = Math.max(0, toRawVideo(minY, gh, snapshot.height));
@@ -136,27 +197,30 @@ export const kasina: Experiment = {
       const sh = sy2 - sy;
       const drawH = drawW * (sh / sw);
 
-      ctx.drawImage(snapshot, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
+      ctx.save();
+      ctx.translate(drawX + drawW, drawY);
+      ctx.scale(-1, 1);
+      ctx.drawImage(snapshot, sx, sy, sw, sh, 0, 0, drawW, drawH);
+      ctx.restore();
 
       const cropMinX = minX;
       const cropMinY = minY;
       const cropW = maxX - minX;
       const cropH = maxY - minY;
       if (gaze) {
-        for (const [name, centerIdx, dirIdx] of gazeDirs) {
+        const centerDrawX = drawX + drawW / 2;
+        const centerDrawY = drawY + drawH / 2;
+        for (const [name, dx, dy] of gazeDirs) {
           const val = gaze.get(name) ?? 0;
           if (val < 0.01) continue;
-          const center = landmarks[centerIdx];
-          const dir = landmarks[dirIdx];
-          const lx = center.x + (dir.x - center.x) * val;
-          const ly = center.y + (dir.y - center.y) * val;
-          const nx = (lx - cropMinX) / cropW;
-          const ny = (ly - cropMinY) / cropH;
-          if (nx < 0 || nx > 1 || ny < 0 || ny > 1) continue;
-          ctx.fillStyle = (offender && name === offender) ? rose : teal;
+          const lenX = val * drawW / 2;
+          const lenY = val * drawH / 2;
+          ctx.strokeStyle = (offender && name === offender) ? rose : teal;
+          ctx.lineWidth = 0.03;
           ctx.beginPath();
-          ctx.arc(drawX + nx * drawW, drawY + ny * drawH, 0.03, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(centerDrawX, centerDrawY);
+          ctx.lineTo(centerDrawX + dx * lenX, centerDrawY + dy * lenY);
+          ctx.stroke();
         }
       }
 
@@ -170,7 +234,7 @@ export const kasina: Experiment = {
         ctx.fillStyle = isIris ? lavender : stone;
         const r = isIris ? 0.03 : 0.015;
         ctx.beginPath();
-        ctx.arc(drawX + nx * drawW, drawY + ny * drawH, r, 0, Math.PI * 2);
+        ctx.arc(drawX + (1 - nx) * drawW, drawY + ny * drawH, r, 0, Math.PI * 2);
         ctx.fill();
       }
       return drawH;
@@ -198,6 +262,7 @@ export const kasina: Experiment = {
         postBlinkTimer = 0;
         moveDuration = 0;
         moveOffender = '';
+        gazeWarning = '';
         lastRoundTime = 0;
         loseOffender = '';
         calibSnapshot = null;
@@ -272,23 +337,35 @@ export const kasina: Experiment = {
 
         const current = readGaze(face);
         let outOfBounds = false;
-        let offender = '';
+        let halfOffender: Gaze | '' = '';
+        let halfPositive = true;
+        let offender: Gaze | '' = '';
+        let offenderPositive = true;
         for (const name of GAZE_SHAPES) {
-          const diff = Math.abs((current.get(name) ?? 0) - (baseline.get(name) ?? 0));
+          const raw = (current.get(name) ?? 0) - (baseline.get(name) ?? 0);
+          const diff = Math.abs(raw);
           if (diff > MOVE_THRESHOLD) {
             outOfBounds = true;
             offender = name;
+            offenderPositive = raw > 0;
             break;
+          } else if (diff > MOVE_THRESHOLD / 2 && !halfOffender) {
+            halfOffender = name;
+            halfPositive = raw > 0;
           }
         }
 
-        if (outOfBounds) {
+        gazeWarning = outOfBounds && offender
+          ? `don't look ${describeGaze(offender, offenderPositive)}`
+          : halfOffender
+          ? `don't look ${describeGaze(halfOffender, halfPositive)}`
+          : '';
+
+        if (outOfBounds && offender) {
           moveOffender = offender;
           moveDuration += dt;
           if (moveDuration >= MOVE_GRACE) {
-            const val = current.get(moveOffender) ?? 0;
-            const base = baseline.get(moveOffender) ?? 0;
-            resetStreak(`${moveOffender}: ${base.toFixed(3)} → ${val.toFixed(3)}`, moveOffender);
+            resetStreak(`looked ${describeGaze(offender, offenderPositive)}`, offender);
           } else {
             streak += dt;
           }
@@ -300,10 +377,6 @@ export const kasina: Experiment = {
       },
 
       draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, debug?: boolean) {
-        if (!debug) {
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, gw, gh);
-        }
 
         const cx = gw / 2;
         const cy = gh * 0.25;
@@ -314,7 +387,7 @@ export const kasina: Experiment = {
 
         if (phase === 'waiting') {
           if (lastRoundTime > 0) {
-            pxText(ctx, `${Math.floor(lastRoundTime)}s`, cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
+            pxText(ctx, `${Math.floor(lastRoundTime)}s — ${getLevel(lastRoundTime)}`, cx, cy - 1.2, '0.6px Fredoka', charcoal, 'center');
           }
           const startMsg = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
@@ -326,24 +399,26 @@ export const kasina: Experiment = {
           const rowGap = 0.3;
           if (calibSnapshot && calibLandmarks) {
             pxText(ctx, 'calibrated', cx, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, LEFT_EYE_BOUNDS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
-            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, RIGHT_EYE_BOUNDS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
+            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
+            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
             if (loseSnapshot && loseLandmarks) {
               const lostY = cropY + leftH + rowGap;
               pxText(ctx, 'lost', cx, lostY - 0.3, '0.25px Fredoka', stone, 'center');
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, LEFT_EYE_BOUNDS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, RIGHT_EYE_BOUNDS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
             }
           }
         } else if (phase === 'calibrating') {
           const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
           pxText(ctx, `look at the dot... ${remaining}s`, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
         } else if (isBlinking) {
-          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
+          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
+        } else if (gazeWarning) {
+          pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', rose, 'center');
         } else {
-          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', cream, 'center');
+          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
           if (best > 0) {
-            pxText(ctx, `best: ${Math.floor(best)}s`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
+            pxText(ctx, `best: ${Math.floor(best)}s — ${getLevel(best)}`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
           }
         }
 
