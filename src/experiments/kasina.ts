@@ -57,16 +57,15 @@ enum Gaze {
 const GAZE_SHAPES = Object.values(Gaze);
 
 function describeGaze(g: Gaze, positive: boolean): string {
-  const eye = g.endsWith('Left') ? 'L' : 'R';
   switch (g) {
-    case Gaze.UpLeft:    return positive ? `up (${eye})`    : `down (${eye})`;
-    case Gaze.DownLeft:  return positive ? `down (${eye})`  : `up (${eye})`;
-    case Gaze.InLeft:    return positive ? `right (${eye})` : `left (${eye})`;
-    case Gaze.OutLeft:   return positive ? `left (${eye})`  : `right (${eye})`;
-    case Gaze.UpRight:   return positive ? `up (${eye})`    : `down (${eye})`;
-    case Gaze.DownRight: return positive ? `down (${eye})`  : `up (${eye})`;
-    case Gaze.InRight:   return positive ? `left (${eye})`  : `right (${eye})`;
-    case Gaze.OutRight:  return positive ? `right (${eye})` : `left (${eye})`;
+    case Gaze.UpLeft:    return positive ? 'up'    : 'down';
+    case Gaze.DownLeft:  return positive ? 'down'  : 'up';
+    case Gaze.InLeft:    return positive ? 'right' : 'left';
+    case Gaze.OutLeft:   return positive ? 'left'  : 'right';
+    case Gaze.UpRight:   return positive ? 'up'    : 'down';
+    case Gaze.DownRight: return positive ? 'down'  : 'up';
+    case Gaze.InRight:   return positive ? 'left'  : 'right';
+    case Gaze.OutRight:  return positive ? 'right' : 'left';
   }
 }
 
@@ -365,7 +364,9 @@ export const kasina: Experiment = {
           moveOffender = offender;
           moveDuration += dt;
           if (moveDuration >= MOVE_GRACE) {
-            resetStreak(`looked ${describeGaze(offender, offenderPositive)}`, offender);
+            const base = Math.round((baseline.get(offender) ?? 0) * 100);
+            const cur = Math.round((current.get(offender) ?? 0) * 100);
+            resetStreak(`looked ${describeGaze(offender, offenderPositive)} (${offender} ${base}% → ${cur}%)`, offender);
           } else {
             streak += dt;
           }
@@ -414,7 +415,7 @@ export const kasina: Experiment = {
         } else if (isBlinking) {
           pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
         } else if (gazeWarning) {
-          pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', rose, 'center');
+          pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
         } else {
           pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
           if (best > 0) {
