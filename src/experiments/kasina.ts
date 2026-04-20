@@ -76,6 +76,13 @@ function toRawVideo(gameVal: number, gameSize: number, videoSize: number): numbe
   return raw * videoSize;
 }
 
+function formatTime(seconds: number): string {
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
 type Phase = 'waiting' | 'active';
 
 export const kasina: Experiment = {
@@ -378,7 +385,7 @@ export const kasina: Experiment = {
 
         if (phase === 'waiting') {
           if (lastRoundTime > 0) {
-            pxText(ctx, `${Math.floor(lastRoundTime)}s — ${getLevel(lastRoundTime)}`, cx, cy - 1.2, '0.6px Fredoka', charcoal, 'center');
+            pxText(ctx, `${formatTime(lastRoundTime)} — ${getLevel(lastRoundTime)}`, cx, cy - 1.2, '0.6px Fredoka', charcoal, 'center');
           }
           const startMsg = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
@@ -404,9 +411,9 @@ export const kasina: Experiment = {
         } else if (gazeWarning) {
           pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
         } else {
-          pxText(ctx, Math.floor(streak) + 's', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
+          pxText(ctx, formatTime(streak), cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
           if (best > 0) {
-            pxText(ctx, `best: ${Math.floor(best)}s — ${getLevel(best)}`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
+            pxText(ctx, `best: ${formatTime(best)} — ${getLevel(best)}`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
           }
         }
 
