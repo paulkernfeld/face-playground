@@ -1,13 +1,12 @@
 import type { Experiment, FaceData, Landmarks } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { lavender, charcoal, stone, honey, rose, teal } from '../palette';
+import { lavender, charcoal, stone, rose, teal } from '../palette';
 
-const CALIBRATE_TIME = 2.0;
 const MOVE_THRESHOLD = 0.15;
 const BLINK_THRESHOLD = 0.2;
-const MAX_BLINK_TIME = 0.5;
-const POST_BLINK_GRACE = 0.25;
+const MAX_BLINK_TIME = 0.4;
+const BLINK_WARNING_TIME = MAX_BLINK_TIME * 0.5;
 const MOVE_GRACE = 0.15;
 
 const LEVELS: [number, string][] = [
@@ -77,14 +76,13 @@ function toRawVideo(gameVal: number, gameSize: number, videoSize: number): numbe
   return raw * videoSize;
 }
 
-type Phase = 'waiting' | 'calibrating' | 'active';
+type Phase = 'waiting' | 'active';
 
 export const kasina: Experiment = {
   name: "kasina",
 
   ...(() => {
     let phase: Phase;
-    let calibrateTimer: number;
     let baseline: Map<string, number>;
     let streak: number;
     let best: number;
@@ -119,9 +117,13 @@ export const kasina: Experiment = {
       return c;
     }
 
-    function startCalibration() {
-      phase = 'calibrating';
-      calibrateTimer = 0;
+    function startGame() {
+      baseline = lastGaze;
+      calibSnapshot = captureVideo();
+      calibLandmarks = lastLandmarks;
+      calibGaze = new Map(lastGaze);
+      phase = 'active';
+      streak = 0;
       blinkDuration = 0;
     }
 
@@ -251,7 +253,6 @@ export const kasina: Experiment = {
       setup(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
         rc = new GameRoughCanvas(ctx.canvas);
         phase = 'waiting';
-        calibrateTimer = 0;
         baseline = new Map();
         streak = 0;
         best = 0;
@@ -278,7 +279,7 @@ export const kasina: Experiment = {
         keyHandler = (e: KeyboardEvent) => {
           if (e.code === 'Space' && phase === 'waiting' && hasFace && !isBlinking) {
             e.preventDefault();
-            startCalibration();
+            startGame();
           }
         };
         document.addEventListener('keydown', keyHandler);
@@ -303,22 +304,11 @@ export const kasina: Experiment = {
 
         if (phase === 'waiting') return;
 
-        if (phase === 'calibrating') {
-          calibrateTimer += dt;
-          if (calibrateTimer >= CALIBRATE_TIME) {
-            baseline = readGaze(face);
-            calibSnapshot = captureVideo();
-            calibLandmarks = face.landmarks;
-            calibGaze = readGaze(face);
-            phase = 'active';
-            streak = 0;
-          }
-          return;
-        }
+
 
         if (blinking) {
           blinkDuration += dt;
-          postBlinkTimer = POST_BLINK_GRACE;
+          postBlinkTimer = MAX_BLINK_TIME;
           if (blinkDuration > MAX_BLINK_TIME) {
             resetStreak('eyes closed too long');
           } else {
@@ -383,7 +373,7 @@ export const kasina: Experiment = {
         const cy = gh * 0.25;
 
         // fixation dot
-        const dotColor = phase === 'calibrating' ? honey : lavender;
+        const dotColor = lavender;
         rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: stone, strokeWidth: 0.02 });
 
         if (phase === 'waiting') {
@@ -409,11 +399,8 @@ export const kasina: Experiment = {
               drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
             }
           }
-        } else if (phase === 'calibrating') {
-          const remaining = Math.ceil(Math.max(0, CALIBRATE_TIME - calibrateTimer));
-          pxText(ctx, `look at the dot... ${remaining}s`, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
-        } else if (isBlinking) {
-          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
+        } else if (isBlinking && blinkDuration > BLINK_WARNING_TIME) {
+          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
         } else if (gazeWarning) {
           pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
         } else {
@@ -429,7 +416,7 @@ export const kasina: Experiment = {
       },
 
       extraButtons: [
-        { label: 'start', key: ' ', onClick: () => { if (phase === 'waiting' && hasFace && !isBlinking) startCalibration(); } },
+        { label: 'start (space)', key: ' ', onClick: () => { if (phase === 'waiting' && hasFace && !isBlinking) startGame(); } },
       ],
 
       demo() {
