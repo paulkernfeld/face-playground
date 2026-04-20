@@ -390,13 +390,13 @@ export const kasina: Experiment = {
           const rowGap = 0.3;
           if (calibSnapshot && calibLandmarks) {
             pxText(ctx, 'calibrated', cx, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
-            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
+            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
+            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
             if (loseSnapshot && loseLandmarks) {
               const lostY = cropY + leftH + rowGap;
               pxText(ctx, 'lost', cx, lostY - 0.3, '0.25px Fredoka', stone, 'center');
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
+              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
             }
           }
         } else if (isBlinking && blinkDuration > BLINK_WARNING_TIME) {
