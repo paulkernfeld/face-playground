@@ -432,7 +432,7 @@ export const kasina: Experiment = {
             const eyeW = (gw - gap) / 2;
             const totalW = gw;
             const eyeH = eyeW / 2;
-            const liveY = gh - eyeH;
+            const liveY = gh - eyeH - 1.0;
             drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2, liveY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, lastGaze);
             drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2 + eyeW + gap, liveY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, lastGaze);
           }
