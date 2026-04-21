@@ -191,7 +191,7 @@ export const kasina: Experiment = {
       const eyeCx = (outer.x + inner.x) / 2;
       const eyeCy = (outer.y + inner.y) / 2;
       const eyeWidth = Math.abs(outer.x - inner.x);
-      const eyeHeight = eyeWidth / 3;
+      const eyeHeight = eyeWidth / 2;
       const minX = eyeCx - eyeWidth / 2;
       const maxX = eyeCx + eyeWidth / 2;
       const minY = eyeCy - eyeHeight / 2;
@@ -391,7 +391,7 @@ export const kasina: Experiment = {
           const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
           pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
           const cropY = cy + 2;
-          const eyeW = 3.5;
+          const eyeW = 2.5;
           const gap = 0.3;
           const totalW = eyeW * 2 + gap;
           const rowGap = 0.3;
