@@ -185,7 +185,15 @@ export const kasina: Experiment = {
       [Gaze.OutRight, 1, 0],   // out = away from nose = looking right = draws left in mirror
     ];
 
-    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: HTMLCanvasElement, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, corners: readonly [number, number], gazeDirs: [Gaze, number, number][], gaze?: Map<string, number>, offender?: Gaze | '') {
+    function getSourceDims(src: CanvasImageSource): [number, number] {
+      if (src instanceof HTMLVideoElement) return [src.videoWidth, src.videoHeight];
+      if (src instanceof HTMLCanvasElement) return [src.width, src.height];
+      return [0, 0];
+    }
+
+    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: CanvasImageSource, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, corners: readonly [number, number], gazeDirs: [Gaze, number, number][], gaze?: Map<string, number>, offender?: Gaze | '') {
+      const [srcW, srcH] = getSourceDims(snapshot);
+      if (!srcW || !srcH) return 0;
       const outer = landmarks[corners[0]];
       const inner = landmarks[corners[1]];
       const eyeCx = (outer.x + inner.x) / 2;
@@ -197,10 +205,10 @@ export const kasina: Experiment = {
       const minY = eyeCy - eyeHeight / 2;
       const maxY = eyeCy + eyeHeight / 2;
 
-      const sx = Math.max(0, toRawVideo(minX, gw, snapshot.width));
-      const sy = Math.max(0, toRawVideo(minY, gh, snapshot.height));
-      const sx2 = Math.min(snapshot.width, toRawVideo(maxX, gw, snapshot.width));
-      const sy2 = Math.min(snapshot.height, toRawVideo(maxY, gh, snapshot.height));
+      const sx = Math.max(0, toRawVideo(minX, gw, srcW));
+      const sy = Math.max(0, toRawVideo(minY, gh, srcH));
+      const sx2 = Math.min(srcW, toRawVideo(maxX, gw, srcW));
+      const sy2 = Math.min(srcH, toRawVideo(maxY, gh, srcH));
       const sw = sx2 - sx;
       const sh = sy2 - sy;
       const drawH = drawW * (sh / sw);
@@ -414,6 +422,19 @@ export const kasina: Experiment = {
           pxText(ctx, formatTime(streak), cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
           if (best > 0) {
             pxText(ctx, `best: ${formatTime(best)} — ${getLevel(best)}`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
+          }
+        }
+
+        if (phase === 'active' && lastLandmarks) {
+          const video = document.getElementById('webcam') as HTMLVideoElement | null;
+          if (video && video.readyState >= 2) {
+            const gap = 0.3;
+            const eyeW = (gw - gap) / 2;
+            const totalW = gw;
+            const eyeH = eyeW / 2;
+            const liveY = gh - eyeH;
+            drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2, liveY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, lastGaze);
+            drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2 + eyeW + gap, liveY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, lastGaze);
           }
         }
 
