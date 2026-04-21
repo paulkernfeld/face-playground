@@ -425,19 +425,6 @@ export const kasina: Experiment = {
           }
         }
 
-        if (phase === 'active' && lastLandmarks) {
-          const video = document.getElementById('webcam') as HTMLVideoElement | null;
-          if (video && video.readyState >= 2) {
-            const gap = 0.3;
-            const eyeW = (gw - gap) / 2;
-            const totalW = gw;
-            const eyeH = eyeW / 2;
-            const liveY = gh - eyeH - 1.0;
-            drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2, liveY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, lastGaze);
-            drawEyeCrop(ctx, video, lastLandmarks, cx - totalW / 2 + eyeW + gap, liveY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, lastGaze);
-          }
-        }
-
         if (debug && lastLandmarks) {
           drawLandmarks(ctx, lastLandmarks, 0, 0, gw, gh, gw, gh, true);
         }
