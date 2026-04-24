@@ -253,11 +253,12 @@ export const kasina: Experiment = {
 
       ctx.restore();
 
-      // Labels on dark background.
+      // Labels on dark background. BCEA displayed is live/cumulative, not a frozen value.
+      const liveBcea = bcea95(stats);
       if (resultTier) {
         pxText(ctx, resultTier, px + pw - 0.2, py + 0.4, '0.4px Fredoka', TIER_COLORS[resultTier], 'right');
       }
-      pxText(ctx, `BCEA@95%: ${resultBcea.toFixed(2)} deg²`, px + 0.2, py + 0.4, '0.28px Sora', cream, 'left');
+      pxText(ctx, `BCEA@95%: ${liveBcea.toFixed(2)} deg²`, px + 0.2, py + 0.4, '0.28px Sora', cream, 'left');
       pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
     }
 
@@ -488,7 +489,7 @@ export const kasina: Experiment = {
         if (elapsed >= TEST_CEILING_SEC) { endTest(); return; }
       },
 
-      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, _debug?: boolean) {
+      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, debug?: boolean) {
         const cx = gw / 2;
         const cy = gh / 2;
 
@@ -522,6 +523,11 @@ export const kasina: Experiment = {
             pxText(ctx, 'show your face', cx, cy - 1.5, '0.55px Fredoka', rose, 'center');
           } else if (isBlinking) {
             pxText(ctx, 'open your eyes', cx, cy - 1.5, '0.55px Fredoka', stone, 'center');
+          }
+          // Debug overlay: live scatter + time-series tucked in the bottom corners.
+          if (debug) {
+            drawScatterPanel(ctx, 0.3, 5.8, 3.0, 3.0);
+            drawTimeSeriesPanel(ctx, 4.0, 7.5, 11.7, 1.4);
           }
         } else if (phase === 'result' && resultTier) {
           const tierColor = TIER_COLORS[resultTier];
