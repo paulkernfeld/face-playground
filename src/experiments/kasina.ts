@@ -261,6 +261,89 @@ export const kasina: Experiment = {
       pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
     }
 
+    // Horizontal threshold lines are drawn at the area-equivalent radius of each
+    // BCEA threshold — an approximate but visually useful translation from deg²
+    // variance into deg of deviation.
+    const CHECKPOINT_LABELS = ['Scroll', 'Scatter', 'Deep Work', 'Monk'];
+
+    function drawTimeSeriesPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
+      ctx.save();
+      ctx.fillStyle = '#EDE7D7';
+      ctx.fillRect(px, py, pw, ph);
+
+      const leftPad = 0.6, rightPad = 0.3, topPad = 0.45, bottomPad = 0.45;
+      const plotX0 = px + leftPad;
+      const plotY0 = py + topPad;
+      const plotW = pw - leftPad - rightPad;
+      const plotH = ph - topPad - bottomPad;
+
+      const maxThresholdR = Math.sqrt(TIER_THRESHOLDS_DEG2[0] / Math.PI);
+      const yMax = Math.max(peakDev, maxThresholdR, 2.5) * 1.1;
+      const xMax = TEST_CEILING_SEC;
+
+      const tx = (t: number) => plotX0 + (t / xMax) * plotW;
+      const ty = (d: number) => plotY0 + plotH - (d / yMax) * plotH;
+
+      pxText(ctx, 'deviation over time', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
+
+      // Horizontal threshold lines (area-equivalent radii).
+      ctx.strokeStyle = lavender;
+      ctx.lineWidth = 0.018;
+      ctx.setLineDash([0.08, 0.08]);
+      for (const t of TIER_THRESHOLDS_DEG2) {
+        const r = Math.sqrt(t / Math.PI);
+        if (r > yMax) continue;
+        ctx.beginPath();
+        ctx.moveTo(plotX0, ty(r));
+        ctx.lineTo(plotX0 + plotW, ty(r));
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Vertical checkpoint markers.
+      ctx.strokeStyle = stone;
+      ctx.lineWidth = 0.018;
+      ctx.setLineDash([0.06, 0.08]);
+      for (let i = 0; i < CHECKPOINTS_SEC.length; i++) {
+        const x = tx(CHECKPOINTS_SEC[i]);
+        ctx.beginPath();
+        ctx.moveTo(x, plotY0);
+        ctx.lineTo(x, plotY0 + plotH);
+        ctx.stroke();
+        pxText(ctx, CHECKPOINT_LABELS[i], x, plotY0 - 0.07, '0.18px Sora', stone, 'center');
+      }
+      ctx.setLineDash([]);
+
+      // Trace.
+      ctx.strokeStyle = charcoal;
+      ctx.lineWidth = 0.03;
+      ctx.beginPath();
+      let started = false;
+      for (const s of samples) {
+        const x = tx(s.t);
+        const y = ty(Math.min(s.dev, yMax));
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      if (started) ctx.stroke();
+
+      // Axes.
+      ctx.strokeStyle = charcoal;
+      ctx.lineWidth = 0.025;
+      ctx.beginPath();
+      ctx.moveTo(plotX0, plotY0);
+      ctx.lineTo(plotX0, plotY0 + plotH);
+      ctx.lineTo(plotX0 + plotW, plotY0 + plotH);
+      ctx.stroke();
+
+      pxText(ctx, `${yMax.toFixed(1)}°`, plotX0 - 0.08, plotY0 + 0.18, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0°',                   plotX0 - 0.08, plotY0 + plotH - 0.02, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0s',                   plotX0,                 plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+      pxText(ctx, `${TEST_CEILING_SEC}s`, plotX0 + plotW,         plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+
+      ctx.restore();
+    }
+
     return {
       setup(_ctx: CanvasRenderingContext2D, _gw: number, _gh: number) {
         rc = new GameRoughCanvas(_ctx.canvas);
@@ -406,6 +489,8 @@ export const kasina: Experiment = {
 
           // Scatter panel (hero / shareable artifact) — 6×6 square, left-centered.
           drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
+          // Time-series error chart — top-right.
+          drawTimeSeriesPanel(ctx, 7.3, 2.5, 8.3, 2.7);
 
           pxText(ctx, 'space to retake', cx, gh - 0.35, '0.4px Fredoka', charcoal, 'center');
         }
