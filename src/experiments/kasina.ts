@@ -156,6 +156,111 @@ export const kasina: Experiment = {
       setLinksVisible(true);
     }
 
+    // The threshold to display on the scatter plot. Represents what the user
+    // would need to beat to reach the next tier (or the Monk ceiling if they
+    // already made it). Drawn as an area-equivalent circle.
+    function scatterThresholdDeg2(): number {
+      const idx = Math.min(checkpointsPassed, TIER_THRESHOLDS_DEG2.length - 1);
+      return TIER_THRESHOLDS_DEG2[idx];
+    }
+
+    function drawScatterPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
+      // Dark background for "glowing dots" aesthetic (share-worthy contrast).
+      ctx.save();
+      ctx.fillStyle = '#1a1815';
+      ctx.fillRect(px, py, pw, ph);
+
+      // Reserve header strip for labels; plot is a square in the remaining area.
+      const headerH = 0.55;
+      const footerH = 0.4;
+      const plotBounds = Math.min(pw - 0.4, ph - headerH - footerH);
+      const centerX = px + pw / 2;
+      const centerY = py + headerH + plotBounds / 2;
+
+      // Auto-scale so ellipse + threshold + samples all fit with a small margin.
+      const ellipse = bcea95Ellipse(stats);
+      const thresholdR = Math.sqrt(scatterThresholdDeg2() / Math.PI);
+      const maxRange = Math.max(
+        peakDev,
+        ellipse ? Math.max(ellipse.a, ellipse.b) : 0,
+        thresholdR,
+        SACCADE_DEG,
+      ) * 1.15;
+      const scale = (plotBounds / 2) / maxRange;
+
+      // Faint axes through origin.
+      ctx.strokeStyle = '#2e2c28';
+      ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.moveTo(centerX - plotBounds / 2, centerY);
+      ctx.lineTo(centerX + plotBounds / 2, centerY);
+      ctx.moveTo(centerX, centerY - plotBounds / 2);
+      ctx.lineTo(centerX, centerY + plotBounds / 2);
+      ctx.stroke();
+
+      // Degree grid rings (1°, 2°, …) while they fit.
+      ctx.strokeStyle = '#2a2824';
+      ctx.lineWidth = 0.015;
+      for (let d = 1; d * scale < plotBounds / 2; d++) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, d * scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Tier threshold — area-equivalent circle in contrasting color.
+      ctx.strokeStyle = honey;
+      ctx.lineWidth = 0.04;
+      ctx.setLineDash([0.12, 0.1]);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, thresholdR * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // BCEA@95% ellipse — cream stroke.
+      if (ellipse) {
+        ctx.strokeStyle = cream;
+        ctx.lineWidth = 0.05;
+        ctx.save();
+        ctx.translate(centerX + ellipse.cx * scale, centerY + ellipse.cy * scale);
+        ctx.rotate(ellipse.theta);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, ellipse.a * scale, ellipse.b * scale, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Sample dots: color by time (early faint → late bright); saccadic intrusions in rose.
+      const totalT = samples.length ? samples[samples.length - 1].t : 1;
+      const dotR = 0.05;
+      for (const s of samples) {
+        const alpha = 0.2 + 0.8 * (s.t / Math.max(totalT, 0.001));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = s.dev > SACCADE_DEG ? rose : cream;
+        ctx.beginPath();
+        ctx.arc(centerX + s.x * scale, centerY + s.y * scale, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Target marker on top.
+      ctx.fillStyle = cream;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 0.05, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1a1815';
+      ctx.lineWidth = 0.02;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Labels on dark background.
+      if (resultTier) {
+        pxText(ctx, resultTier, px + pw - 0.2, py + 0.4, '0.4px Fredoka', TIER_COLORS[resultTier], 'right');
+      }
+      pxText(ctx, `BCEA@95%: ${resultBcea.toFixed(2)} deg²`, px + 0.2, py + 0.4, '0.28px Sora', cream, 'left');
+      pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
+    }
+
     return {
       setup(_ctx: CanvasRenderingContext2D, _gw: number, _gh: number) {
         rc = new GameRoughCanvas(_ctx.canvas);
@@ -256,20 +361,22 @@ export const kasina: Experiment = {
         const cx = gw / 2;
         const cy = gh / 2;
 
-        // Fixation target — circle with cross + center point, visible in all phases.
-        rc.circle(cx, cy, 0.5, { fill: charcoal, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
-        ctx.save();
-        ctx.strokeStyle = cream;
-        ctx.lineWidth = 0.05;
-        ctx.beginPath();
-        ctx.moveTo(cx - 0.22, cy); ctx.lineTo(cx + 0.22, cy);
-        ctx.moveTo(cx, cy - 0.22); ctx.lineTo(cx, cy + 0.22);
-        ctx.stroke();
-        ctx.fillStyle = cream;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 0.05, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        // Fixation target — shown during ready/active only; the result screen uses the space.
+        if (phase !== 'result') {
+          rc.circle(cx, cy, 0.5, { fill: charcoal, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
+          ctx.save();
+          ctx.strokeStyle = cream;
+          ctx.lineWidth = 0.05;
+          ctx.beginPath();
+          ctx.moveTo(cx - 0.22, cy); ctx.lineTo(cx + 0.22, cy);
+          ctx.moveTo(cx, cy - 0.22); ctx.lineTo(cx, cy + 0.22);
+          ctx.stroke();
+          ctx.fillStyle = cream;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 0.05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
 
         if (phase === 'ready') {
           pxText(ctx, 'One-Minute Focus Test', cx, 1.4, '0.7px Fredoka', charcoal, 'center');
@@ -286,17 +393,21 @@ export const kasina: Experiment = {
             pxText(ctx, 'open your eyes', cx, cy - 1.5, '0.55px Fredoka', stone, 'center');
           }
         } else if (phase === 'result' && resultTier) {
-          const color = TIER_COLORS[resultTier];
-          pxText(ctx, resultTier, cx, 1.8, '1.5px Fredoka', color, 'center');
-          // Wrap long roast manually — pxText doesn't wrap.
-          const lines = wrap(ROASTS[resultTier], 44);
-          let y = 3.3;
+          const tierColor = TIER_COLORS[resultTier];
+
+          // Header: tier + roast
+          pxText(ctx, resultTier, cx, 0.95, '1.1px Fredoka', tierColor, 'center');
+          const lines = wrap(ROASTS[resultTier], 60);
+          let y = 1.75;
           for (const line of lines) {
-            pxText(ctx, line, cx, y, '0.4px Sora', charcoal, 'center');
-            y += 0.6;
+            pxText(ctx, line, cx, y, '0.32px Sora', charcoal, 'center');
+            y += 0.45;
           }
-          pxText(ctx, `BCEA@95%: ${resultBcea.toFixed(2)} deg²`, cx, gh - 2.7, '0.28px Sora', stone, 'center');
-          pxText(ctx, 'space to retake', cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
+
+          // Scatter panel (hero / shareable artifact) — 6×6 square, left-centered.
+          drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
+
+          pxText(ctx, 'space to retake', cx, gh - 0.35, '0.4px Fredoka', charcoal, 'center');
         }
       },
 
@@ -311,11 +422,43 @@ export const kasina: Experiment = {
       ],
 
       demo() {
-        // Static preview: frozen on a result screen.
+        // Static preview: frozen on a Deep Work result with plausible gaze samples.
+        clearRun();
         phase = 'result';
         resultTier = 'Deep Work';
-        resultBcea = 2.4;
         checkpointsPassed = 3;
+        const N = 180;
+        const duration = 60;
+        // Box-Muller-ish deterministic noise for reproducible preview.
+        for (let i = 0; i < N; i++) {
+          const t = (i / N) * duration;
+          const u1 = ((i * 13 + 7) % 97) / 97 + 0.01;
+          const u2 = ((i * 29 + 11) % 53) / 53 + 0.01;
+          const r = Math.sqrt(-2 * Math.log(u1));
+          const x = r * Math.cos(2 * Math.PI * u2) * 0.35;
+          const y = r * Math.sin(2 * Math.PI * u2) * 0.35;
+          addSample(stats, x, y);
+          const dev = Math.hypot(x, y);
+          samples.push({ t, x, y, dev });
+          validCount++;
+          if (dev > SACCADE_DEG) saccadeCount++;
+          if (dev > peakDev) peakDev = dev;
+          sumDev += dev;
+        }
+        // Throw in a couple of intrusions for visible red dots.
+        const intrusions: [number, number, number][] = [[20, 2.3, -0.8], [47, -1.6, 2.1]];
+        for (const [t, x, y] of intrusions) {
+          addSample(stats, x, y);
+          const dev = Math.hypot(x, y);
+          samples.push({ t, x, y, dev });
+          validCount++;
+          if (dev > SACCADE_DEG) saccadeCount++;
+          if (dev > peakDev) peakDev = dev;
+          sumDev += dev;
+        }
+        samples.sort((a, b) => a.t - b.t);
+        elapsed = duration;
+        resultBcea = bcea95(stats);
       },
 
       cleanup() {
