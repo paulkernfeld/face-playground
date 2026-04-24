@@ -50,10 +50,10 @@ export const captureExperiment: Experiment = {
       flashMsg = `saved fixtures/${label}.png`;
     };
 
-    // Keyboard: Space = instant capture
+    // Keyboard: C = instant capture
     if (keyHandler) document.removeEventListener('keydown', keyHandler);
     keyHandler = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
+      if (e.code === 'KeyC') {
         e.preventDefault();
         win.__capture?.();
       }
@@ -91,7 +91,7 @@ export const captureExperiment: Experiment = {
     }
 
     // Instructions
-    pxText(ctx, "Space = capture instantly", w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
+    pxText(ctx, "C = capture instantly", w / 2, h / 2, "0.3px sans-serif", "#ccc", "center");
     pxText(ctx, "v = toggle video feed", w / 2, h / 2 + 0.6, "0.25px sans-serif", "#666", "center");
 
     // Capture flash + filename overlay (1s)

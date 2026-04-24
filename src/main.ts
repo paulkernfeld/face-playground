@@ -96,7 +96,6 @@ btnBar.classList.add("hidden");
 btnBar.innerHTML = `
   <button id="btn-back">&#x2190; back${key("q")}</button>
   <button id="btn-debug">debug${key("v")}</button>
-  <button id="btn-capture" class="hidden">capture${key("space")}</button>
 `;
 document.body.appendChild(btnBar);
 
@@ -105,9 +104,6 @@ document.getElementById("btn-back")!.addEventListener("click", () => {
 });
 document.getElementById("btn-debug")!.addEventListener("click", () => {
   if (currentExp) toggleDebug();
-});
-document.getElementById("btn-capture")!.addEventListener("click", () => {
-  (window as any).__capture?.();
 });
 
 // -- Extra buttons management --
@@ -537,7 +533,11 @@ if (angleTestParam !== null) {
 } else if (poseTestParam !== null) {
   startPoseTest();
 } else if (captureParam !== null) {
-  document.getElementById("btn-capture")!.classList.remove("hidden");
+  const captureBtn = document.createElement("button");
+  captureBtn.id = "btn-capture";
+  captureBtn.textContent = "capture (c)";
+  captureBtn.addEventListener("click", () => { (window as any).__capture?.(); });
+  btnBar.appendChild(captureBtn);
   enterExperiment(captureExperiment);
 } else if (params.get("exp") !== null) {
   const idx = parseInt(params.get("exp")!) - 1;
