@@ -2,7 +2,7 @@ import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 import { charcoal, stone, rose, teal, cream, honey, sage, lavender } from '../palette';
-import { createBceaStats, addSample, bcea95, type BceaStats } from '../bcea';
+import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type BceaEllipse } from '../bcea';
 
 // One-Minute Focus Test — spec v0.1.
 // Stare at the dot; BCEA@95% of your gaze over the whole test is checked at each checkpoint.
@@ -30,6 +30,7 @@ const TIER_COLORS: Record<Tier, string> = {
 const BLINK_THRESHOLD = 0.5;
 const MAX_BLINK_SEC = 2.0;
 const MAX_NO_FACE_SEC = 1.5;
+const SACCADE_DEG = 2.0;   // samples farther than this from center count as saccadic intrusions
 
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
@@ -38,6 +39,13 @@ const PAPER_LINKS = [
 ];
 
 type Phase = 'ready' | 'active' | 'result';
+
+interface Sample {
+  t: number;         // elapsed seconds from test start
+  x: number;         // degrees (screen x, + = right)
+  y: number;         // degrees (screen y, + = down)
+  dev: number;       // √(x² + y²) — angular deviation from target center
+}
 
 function extractGazeDeg(bs: Blendshapes): [number, number] {
   const inL = bs.get('eyeLookInLeft') ?? 0;
@@ -65,6 +73,13 @@ export const kasina: Experiment = {
     let resultTier: Tier | null;
     let resultBcea: number;
     let rc: GameRoughCanvas;
+
+    let samples: Sample[];
+    let saccadeCount: number;
+    let peakDev: number;
+    let sumDev: number;
+    let validCount: number;
+    let invalidCount: number;    // frames during active phase that didn't yield a sample (blink/no-face)
 
     let blinkDuration: number;
     let noFaceDuration: number;
@@ -97,25 +112,31 @@ export const kasina: Experiment = {
       linksEl.style.display = show ? 'flex' : 'none';
     }
 
-    function resetToReady() {
-      phase = 'ready';
+    function clearRun() {
       elapsed = 0;
       stats = createBceaStats();
       checkpointsPassed = 0;
-      resultTier = null;
-      resultBcea = 0;
       blinkDuration = 0;
       noFaceDuration = 0;
+      samples = [];
+      saccadeCount = 0;
+      peakDev = 0;
+      sumDev = 0;
+      validCount = 0;
+      invalidCount = 0;
+    }
+
+    function resetToReady() {
+      phase = 'ready';
+      clearRun();
+      resultTier = null;
+      resultBcea = 0;
       setLinksVisible(false);
     }
 
     function startTest() {
       phase = 'active';
-      elapsed = 0;
-      stats = createBceaStats();
-      checkpointsPassed = 0;
-      blinkDuration = 0;
-      noFaceDuration = 0;
+      clearRun();
       setLinksVisible(false);
     }
 
@@ -171,6 +192,7 @@ export const kasina: Experiment = {
           isBlinking = false;
           if (phase === 'active') {
             noFaceDuration += dt;
+            invalidCount++;
             if (noFaceDuration > MAX_NO_FACE_SEC) endTest();
           }
           return;
@@ -188,11 +210,18 @@ export const kasina: Experiment = {
         if (isBlinking) {
           // Blinks don't contribute a sample, but the clock keeps running.
           blinkDuration += dt;
+          invalidCount++;
           if (blinkDuration > MAX_BLINK_SEC) { endTest(); return; }
         } else {
           blinkDuration = 0;
           const [gx, gy] = extractGazeDeg(face.blendshapes);
           addSample(stats, gx, gy);
+          const dev = Math.hypot(gx, gy);
+          samples.push({ t: elapsed, x: gx, y: gy, dev });
+          validCount++;
+          if (dev > SACCADE_DEG) saccadeCount++;
+          if (dev > peakDev) peakDev = dev;
+          sumDev += dev;
         }
 
         elapsed += dt;
