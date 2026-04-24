@@ -11,8 +11,17 @@ import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type
 // Tune empirically after pilot users.
 const BLENDSHAPE_TO_DEG = 30;
 
-const CHECKPOINTS_SEC = [3, 10, 30, 60, 180];
-const THRESHOLDS_DEG2 = [8, 5, 3, 2, 1.2];
+// Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
+// Thresholds from quintile calibration against Longhin et al. 2016 MAIA normative
+// data (N=358), fitted as log-normal: mean=2.40 deg², SD=2.04, μ≈0.60, σ≈0.74.
+// Each cutoff is the inverse-CDF at the population quintile for that tier.
+// Caveats: duration-invariance is a first-order approximation; webcam is ~6×
+// noisier than MAIA IR tracking, so real-hardware thresholds will likely need
+// a multiplicative scale once pilot data arrives. Centralized here so retuning
+// is a one-line change.
+const CHECKPOINTS_SEC =      [3,   10,  30,  60];
+const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0];
+const TEST_CEILING_SEC = 180;
 
 type Tier = 'Cooked' | 'Scroll' | 'Scatter' | 'Deep Work' | 'Monk';
 const TIERS: Tier[] = ['Cooked', 'Scroll', 'Scatter', 'Deep Work', 'Monk'];
@@ -226,19 +235,21 @@ export const kasina: Experiment = {
 
         elapsed += dt;
 
-        // Evaluate checkpoints in order. Cumulative BCEA over the whole test so far.
+        // Evaluate gated checkpoints in order. Cumulative BCEA over the whole test so far.
         while (checkpointsPassed < CHECKPOINTS_SEC.length
                && elapsed >= CHECKPOINTS_SEC[checkpointsPassed]) {
           const bcea = bcea95(stats);
-          if (bcea <= THRESHOLDS_DEG2[checkpointsPassed]) {
+          if (bcea <= TIER_THRESHOLDS_DEG2[checkpointsPassed]) {
             checkpointsPassed++;
             playTick();
-            if (checkpointsPassed === CHECKPOINTS_SEC.length) { endTest(); return; }
           } else {
             endTest();
             return;
           }
         }
+
+        // 180s ceiling: Monk already earned at 60s, this just ends the test.
+        if (elapsed >= TEST_CEILING_SEC) { endTest(); return; }
       },
 
       draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, _debug?: boolean) {
