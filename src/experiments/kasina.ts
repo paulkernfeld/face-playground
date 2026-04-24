@@ -344,6 +344,54 @@ export const kasina: Experiment = {
       ctx.restore();
     }
 
+    function sampleRateHz(): number {
+      return elapsed > 0 ? validCount / elapsed : 0;
+    }
+
+    function sampleRateColor(hz: number): string {
+      if (hz >= 25) return sage;
+      if (hz >= 15) return honey;
+      return rose;
+    }
+
+    function drawDiagnosticsPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
+      ctx.save();
+      ctx.fillStyle = '#EDE7D7';
+      ctx.fillRect(px, py, pw, ph);
+
+      pxText(ctx, 'diagnostics', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
+
+      const totalFrames = validCount + invalidCount;
+      const hz = sampleRateHz();
+      const meanDev = validCount > 0 ? sumDev / validCount : 0;
+      const validPct = totalFrames > 0 ? (100 * validCount / totalFrames) : 0;
+
+      const cells: { label: string; value: string; color?: string }[] = [
+        { label: 'sample rate',    value: `${hz.toFixed(1)} Hz`, color: sampleRateColor(hz) },
+        { label: '% valid',        value: `${validPct.toFixed(0)}%` },
+        { label: 'intrusions',     value: `${saccadeCount}` },
+        { label: 'peak error',     value: `${peakDev.toFixed(2)}°` },
+        { label: 'mean error',     value: `${meanDev.toFixed(2)}°` },
+        { label: 'BCEA@95%',       value: `${resultBcea.toFixed(2)} deg²` },
+        { label: 'duration',       value: `${elapsed.toFixed(1)}s` },
+      ];
+
+      const cols = 4;
+      const headerH = 0.5;
+      const cellW = pw / cols;
+      const cellH = (ph - headerH) / 2;
+      for (let i = 0; i < cells.length; i++) {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        const x0 = px + c * cellW;
+        const y0 = py + headerH + r * cellH;
+        pxText(ctx, cells[i].label, x0 + cellW / 2, y0 + 0.35, '0.2px Sora', stone, 'center');
+        pxText(ctx, cells[i].value, x0 + cellW / 2, y0 + 0.85, '0.45px Fredoka', cells[i].color ?? charcoal, 'center');
+      }
+
+      ctx.restore();
+    }
+
     return {
       setup(_ctx: CanvasRenderingContext2D, _gw: number, _gh: number) {
         rc = new GameRoughCanvas(_ctx.canvas);
@@ -487,10 +535,17 @@ export const kasina: Experiment = {
             y += 0.45;
           }
 
-          // Scatter panel (hero / shareable artifact) — 6×6 square, left-centered.
+          // Scatter panel (hero / shareable artifact) — square, left-centered.
           drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
-          // Time-series error chart — top-right.
+          // Right column: time-series on top, diagnostics below.
           drawTimeSeriesPanel(ctx, 7.3, 2.5, 8.3, 2.7);
+          drawDiagnosticsPanel(ctx, 7.3, 5.4, 8.3, 3.1);
+
+          // Low-sample-rate trust banner.
+          const hz = sampleRateHz();
+          if (hz > 0 && hz < 15) {
+            pxText(ctx, 'low sample rate — consider retaking with better lighting', cx, gh - 0.8, '0.26px Sora', rose, 'center');
+          }
 
           pxText(ctx, 'space to retake', cx, gh - 0.35, '0.4px Fredoka', charcoal, 'center');
         }
