@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { createBceaStats, addSample, bcea95 } from "../src/bcea";
+import { createBceaStats, addSample, bcea95, bcea95Ellipse } from "../src/bcea";
 
 describe("BCEA@95%", () => {
   it("is 0 when all samples are identical", () => {
@@ -45,5 +45,40 @@ describe("BCEA@95%", () => {
     const doubled = build(2);
     // σx·σy scales as k²; √(1−ρ²) is unchanged (ρ=0 regardless of k)
     assert.ok(Math.abs(doubled / base - 4) < 0.01, `ratio ${doubled / base}, expected 4`);
+  });
+});
+
+describe("BCEA ellipse", () => {
+  it("is null for fewer than 2 samples", () => {
+    assert.strictEqual(bcea95Ellipse(createBceaStats()), null);
+  });
+
+  it("has area π·a·b equal to bcea95()", () => {
+    const s = createBceaStats();
+    const pts: [number, number][] = [[-2,-1],[-2,1],[2,-1],[2,1]];
+    for (let i = 0; i < 500; i++) for (const [x,y] of pts) addSample(s, x, y);
+    const e = bcea95Ellipse(s)!;
+    const area = Math.PI * e.a * e.b;
+    assert.ok(Math.abs(area - bcea95(s)) < 1e-6, `area ${area}, bcea ${bcea95(s)}`);
+  });
+
+  it("aligns theta=0 for an x-elongated cloud (no correlation)", () => {
+    const s = createBceaStats();
+    const pts: [number, number][] = [[-5,-1],[-5,1],[5,-1],[5,1]];
+    for (let i = 0; i < 500; i++) for (const [x,y] of pts) addSample(s, x, y);
+    const e = bcea95Ellipse(s)!;
+    assert.ok(Math.abs(e.theta) < 1e-9, `theta ${e.theta}`);
+    assert.ok(e.a > e.b, `a ${e.a} !> b ${e.b}`);
+  });
+
+  it("aligns theta=π/4 for a perfectly correlated cloud on y=x", () => {
+    const s = createBceaStats();
+    // Non-degenerate near-correlation: tight along y=x, slight jitter off-axis.
+    for (let i = -50; i <= 50; i++) {
+      addSample(s, i, i + 0.01);
+      addSample(s, i, i - 0.01);
+    }
+    const e = bcea95Ellipse(s)!;
+    assert.ok(Math.abs(e.theta - Math.PI / 4) < 0.01, `theta ${e.theta}`);
   });
 });
