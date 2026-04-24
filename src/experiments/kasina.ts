@@ -1,443 +1,281 @@
-import type { Experiment, FaceData, Landmarks } from "../types";
+import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { lavender, charcoal, stone, rose, teal } from '../palette';
+import { charcoal, stone, rose, teal, cream, honey, sage, lavender } from '../palette';
+import { createBceaStats, addSample, bcea95, type BceaStats } from '../bcea';
 
-const MOVE_THRESHOLD = 0.15;
-const BLINK_THRESHOLD = 0.2;
-const MAX_BLINK_TIME = 0.4;
-const BLINK_WARNING_TIME = MAX_BLINK_TIME * 0.5;
-const MOVE_GRACE = 0.15;
+// One-Minute Focus Test — spec v0.1.
+// Stare at the dot; BCEA@95% of your gaze over the whole test is checked at each checkpoint.
 
-const LEVELS: [number, string][] = [
-  [8 * 60 * 60, 'buddha'],
-  [5 * 60 * 60, 'guanyin'],
-  [3 * 60 * 60, 'tara'],
-  [2 * 60 * 60, 'jizo'],
-  [80 * 60, 'manjushri'],
-  [50 * 60, 'arhat'],
-  [30 * 60, 'anagami'],
-  [20 * 60, 'sakadagami'],
-  [13 * 60, 'sotapanna'],
-  [8 * 60, 'garuda'],
-  [5 * 60, 'naga'],
-  [3 * 60, 'asura'],
-  [2 * 60, 'yaksha'],
-  [80, 'dragon'],
-  [50, 'tiger'],
-  [30, 'wolf'],
-  [20, 'horse'],
-  [13, 'monkey'],
-  [8, 'cat'],
-  [5, 'pigeon'],
-  [3, 'rat'],
-  [2, 'goldfish'],
-  [0, 'mosquito'],
+// Placeholder linear conversion from blendshape units to visual-angle degrees.
+// Tune empirically after pilot users.
+const BLENDSHAPE_TO_DEG = 30;
+
+const CHECKPOINTS_SEC = [3, 10, 30, 60, 180];
+const THRESHOLDS_DEG2 = [8, 5, 3, 2, 1.2];
+
+type Tier = 'Cooked' | 'Scroll' | 'Scatter' | 'Deep Work' | 'Monk';
+const TIERS: Tier[] = ['Cooked', 'Scroll', 'Scatter', 'Deep Work', 'Monk'];
+const ROASTS: Record<Tier, string> = {
+  'Monk':      "You held still for a minute. Most modern brains can't. What are you doing with your life.",
+  'Deep Work': "Top-shelf focus. You probably get things done.",
+  'Scatter':   "A functional modern brain. Congratulations?",
+  'Scroll':    "Your attention is in feed-mode. You are most of us.",
+  'Cooked':    "lol",
+};
+const TIER_COLORS: Record<Tier, string> = {
+  'Monk': sage, 'Deep Work': teal, 'Scatter': honey, 'Scroll': lavender, 'Cooked': rose,
+};
+
+const BLINK_THRESHOLD = 0.5;
+const MAX_BLINK_SEC = 2.0;
+const MAX_NO_FACE_SEC = 1.5;
+
+const PAPER_LINKS = [
+  { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
+  { label: 'microsaccades & attention', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7962679/' },
+  { label: 'ADHD fixation stability', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC12452707/' },
 ];
 
-function getLevel(seconds: number): string {
-  for (const [threshold, label] of LEVELS) {
-    if (seconds >= threshold) return label;
-  }
-  return 'noob';
+type Phase = 'ready' | 'active' | 'result';
+
+function extractGazeDeg(bs: Blendshapes): [number, number] {
+  const inL = bs.get('eyeLookInLeft') ?? 0;
+  const outL = bs.get('eyeLookOutLeft') ?? 0;
+  const inR = bs.get('eyeLookInRight') ?? 0;
+  const outR = bs.get('eyeLookOutRight') ?? 0;
+  const upL = bs.get('eyeLookUpLeft') ?? 0;
+  const downL = bs.get('eyeLookDownLeft') ?? 0;
+  const upR = bs.get('eyeLookUpRight') ?? 0;
+  const downR = bs.get('eyeLookDownRight') ?? 0;
+  // Screen-space: left-eye "in" = toward nose = user looking right; same for right-eye "out".
+  const x = ((inL + outR) - (outL + inR)) / 2;
+  const y = ((downL + downR) - (upL + upR)) / 2;
+  return [x * BLENDSHAPE_TO_DEG, y * BLENDSHAPE_TO_DEG];
 }
-
-enum Gaze {
-  UpLeft = 'eyeLookUpLeft',
-  DownLeft = 'eyeLookDownLeft',
-  InLeft = 'eyeLookInLeft',
-  OutLeft = 'eyeLookOutLeft',
-  UpRight = 'eyeLookUpRight',
-  DownRight = 'eyeLookDownRight',
-  InRight = 'eyeLookInRight',
-  OutRight = 'eyeLookOutRight',
-}
-
-const GAZE_SHAPES = Object.values(Gaze);
-
-function describeGaze(g: Gaze, positive: boolean): string {
-  switch (g) {
-    case Gaze.UpLeft:    return positive ? 'up'    : 'down';
-    case Gaze.DownLeft:  return positive ? 'down'  : 'up';
-    case Gaze.InLeft:    return positive ? 'right' : 'left';
-    case Gaze.OutLeft:   return positive ? 'left'  : 'right';
-    case Gaze.UpRight:   return positive ? 'up'    : 'down';
-    case Gaze.DownRight: return positive ? 'down'  : 'up';
-    case Gaze.InRight:   return positive ? 'left'  : 'right';
-    case Gaze.OutRight:  return positive ? 'right' : 'left';
-  }
-}
-
-// main.ts remaps landmarks with 5% margin crop — reverse it to get raw video coords
-const MARGIN = 0.05;
-function toRawVideo(gameVal: number, gameSize: number, videoSize: number): number {
-  const normalized = gameVal / gameSize; // 0..1 in remapped space
-  const raw = normalized * (1 - 2 * MARGIN) + MARGIN; // 0..1 in raw video space
-  return raw * videoSize;
-}
-
-function formatTime(seconds: number): string {
-  const s = Math.floor(seconds);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
-
-type Phase = 'waiting' | 'active';
 
 export const kasina: Experiment = {
   name: "kasina",
 
   ...(() => {
     let phase: Phase;
-    let baseline: Map<string, number>;
-    let streak: number;
-    let best: number;
+    let elapsed: number;
+    let stats: BceaStats;
+    let checkpointsPassed: number;
+    let resultTier: Tier | null;
+    let resultBcea: number;
     let rc: GameRoughCanvas;
+
     let blinkDuration: number;
-    let lastResetReason: string;
+    let noFaceDuration: number;
     let isBlinking: boolean;
-    let postBlinkTimer: number;
-    let moveDuration: number;
-    let moveOffender: Gaze | '';
-    let gazeWarning: string;
-    let lastRoundTime: number;
-    let loseOffender: Gaze | '';
-    let calibSnapshot: HTMLCanvasElement | null;
-    let calibLandmarks: Landmarks | null;
-    let calibGaze: Map<string, number>;
-    let loseSnapshot: HTMLCanvasElement | null;
-    let loseLandmarks: Landmarks | null;
-    let loseGaze: Map<string, number>;
-    let lastLandmarks: Landmarks | null;
-    let lastGaze: Map<string, number>;
     let hasFace: boolean;
+
+    let audioCtx: AudioContext | null = null;
     let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+    let linksEl: HTMLDivElement | null = null;
 
-    function captureVideo(): HTMLCanvasElement | null {
-      const video = document.getElementById('webcam') as HTMLVideoElement | null;
-      if (!video || video.readyState < 2) return null;
-      const c = document.createElement('canvas');
-      c.width = video.videoWidth;
-      c.height = video.videoHeight;
-      c.getContext('2d')!.drawImage(video, 0, 0);
-      return c;
+    function playTick() {
+      try {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(660, t);
+        osc.frequency.exponentialRampToValueAtTime(880, t + 0.06);
+        gain.gain.setValueAtTime(0.06, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(t); osc.stop(t + 0.2);
+      } catch { /* audio is optional */ }
     }
 
-    function startGame() {
-      baseline = lastGaze;
-      calibSnapshot = captureVideo();
-      calibLandmarks = lastLandmarks;
-      calibGaze = new Map(lastGaze);
+    function setLinksVisible(show: boolean) {
+      if (!linksEl) return;
+      linksEl.style.display = show ? 'flex' : 'none';
+    }
+
+    function resetToReady() {
+      phase = 'ready';
+      elapsed = 0;
+      stats = createBceaStats();
+      checkpointsPassed = 0;
+      resultTier = null;
+      resultBcea = 0;
+      blinkDuration = 0;
+      noFaceDuration = 0;
+      setLinksVisible(false);
+    }
+
+    function startTest() {
       phase = 'active';
-      streak = 0;
+      elapsed = 0;
+      stats = createBceaStats();
+      checkpointsPassed = 0;
       blinkDuration = 0;
+      noFaceDuration = 0;
+      setLinksVisible(false);
     }
 
-    function resetStreak(reason: string, offender?: Gaze) {
-      lastRoundTime = streak;
-      if (streak > best) best = streak;
-      lastResetReason = reason;
-      loseSnapshot = captureVideo();
-      loseLandmarks = lastLandmarks;
-      loseGaze = lastGaze;
-      loseOffender = offender ?? '';
-      phase = 'waiting';
-      streak = 0;
-      blinkDuration = 0;
-    }
-
-    // landmarks are in game units (0..GAME_W, 0..GAME_H)
-    // For snapshot: map game coords into snapshot rect (ox,oy,sw,sh) via (gw,gh)
-    // For debug: draw directly in game coords (ox=0,oy=0,sw=gw,sh=gh)
-    function drawLandmarks(ctx: CanvasRenderingContext2D, landmarks: Landmarks, ox: number, oy: number, sw: number, sh: number, gw: number, gh: number, mirror: boolean) {
-      for (let i = 0; i < landmarks.length; i++) {
-        const lm = landmarks[i];
-        const nx = lm.x / gw;
-        const ny = lm.y / gh;
-        const x = ox + (mirror ? (1 - nx) : nx) * sw;
-        const y = oy + ny * sh;
-        const isIris = i >= 468 && i <= 477;
-        ctx.fillStyle = isIris ? rose : stone;
-        const r = isIris ? 0.04 : 0.015;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Left eye: outer=33, inner=133; Right eye: outer=263, inner=362
-    const LEFT_EYE_CORNERS = [33, 133] as const;
-    const RIGHT_EYE_CORNERS = [263, 362] as const;
-
-    // Per-eye gaze blendshape → direction landmark mapping
-    // Per-eye gaze: [blendshape, dx, dy in mirrored draw space]
-    const LEFT_GAZE_DIRS: [Gaze, number, number][] = [
-      [Gaze.UpLeft, 0, -1],
-      [Gaze.DownLeft, 0, 1],
-      [Gaze.InLeft, 1, 0],     // in = toward nose = looking right = draws left in mirror
-      [Gaze.OutLeft, -1, 0],   // out = away from nose = looking left = draws right in mirror
-    ];
-    const RIGHT_GAZE_DIRS: [Gaze, number, number][] = [
-      [Gaze.UpRight, 0, -1],
-      [Gaze.DownRight, 0, 1],
-      [Gaze.InRight, -1, 0],   // in = toward nose = looking left = draws right in mirror
-      [Gaze.OutRight, 1, 0],   // out = away from nose = looking right = draws left in mirror
-    ];
-
-    function getSourceDims(src: CanvasImageSource): [number, number] {
-      if (src instanceof HTMLVideoElement) return [src.videoWidth, src.videoHeight];
-      if (src instanceof HTMLCanvasElement) return [src.width, src.height];
-      return [0, 0];
-    }
-
-    function drawEyeCrop(ctx: CanvasRenderingContext2D, snapshot: CanvasImageSource, landmarks: Landmarks, drawX: number, drawY: number, drawW: number, gw: number, gh: number, corners: readonly [number, number], gazeDirs: [Gaze, number, number][], gaze?: Map<string, number>, offender?: Gaze | '') {
-      const [srcW, srcH] = getSourceDims(snapshot);
-      if (!srcW || !srcH) return 0;
-      const outer = landmarks[corners[0]];
-      const inner = landmarks[corners[1]];
-      const eyeCx = (outer.x + inner.x) / 2;
-      const eyeCy = (outer.y + inner.y) / 2;
-      const eyeWidth = Math.abs(outer.x - inner.x);
-      const eyeHeight = eyeWidth / 2;
-      const minX = eyeCx - eyeWidth / 2;
-      const maxX = eyeCx + eyeWidth / 2;
-      const minY = eyeCy - eyeHeight / 2;
-      const maxY = eyeCy + eyeHeight / 2;
-
-      const sx = Math.max(0, toRawVideo(minX, gw, srcW));
-      const sy = Math.max(0, toRawVideo(minY, gh, srcH));
-      const sx2 = Math.min(srcW, toRawVideo(maxX, gw, srcW));
-      const sy2 = Math.min(srcH, toRawVideo(maxY, gh, srcH));
-      const sw = sx2 - sx;
-      const sh = sy2 - sy;
-      const drawH = drawW * (sh / sw);
-
-      ctx.save();
-      ctx.translate(drawX + drawW, drawY);
-      ctx.scale(-1, 1);
-      ctx.drawImage(snapshot, sx, sy, sw, sh, 0, 0, drawW, drawH);
-      ctx.restore();
-
-      const cropMinX = minX;
-      const cropMinY = minY;
-      const cropW = maxX - minX;
-      const cropH = maxY - minY;
-      if (gaze) {
-        const centerDrawX = drawX + drawW / 2;
-        const centerDrawY = drawY + drawH / 2;
-        for (const [name, dx, dy] of gazeDirs) {
-          const val = gaze.get(name) ?? 0;
-          if (val < 0.01) continue;
-          const lenX = val * drawW / 2;
-          const lenY = val * drawH / 2;
-          ctx.strokeStyle = (offender && name === offender) ? rose : teal;
-          ctx.lineWidth = 0.03;
-          ctx.beginPath();
-          ctx.moveTo(centerDrawX, centerDrawY);
-          ctx.lineTo(centerDrawX + dx * lenX, centerDrawY + dy * lenY);
-          ctx.stroke();
-        }
-      }
-
-      // Landmark dots (iris in rose, rest in stone)
-      for (let i = 0; i < landmarks.length; i++) {
-        const lm = landmarks[i];
-        const nx = (lm.x - cropMinX) / cropW;
-        const ny = (lm.y - cropMinY) / cropH;
-        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) continue;
-        const isIris = i >= 468 && i <= 477;
-        ctx.fillStyle = isIris ? lavender : stone;
-        const r = isIris ? 0.03 : 0.015;
-        ctx.beginPath();
-        ctx.arc(drawX + (1 - nx) * drawW, drawY + ny * drawH, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      return drawH;
-    }
-
-    function readGaze(face: FaceData): Map<string, number> {
-      const m = new Map<string, number>();
-      for (const name of GAZE_SHAPES) {
-        m.set(name, face.blendshapes.get(name) ?? 0);
-      }
-      return m;
+    function endTest() {
+      resultTier = TIERS[Math.min(checkpointsPassed, 4)];
+      resultBcea = bcea95(stats);
+      phase = 'result';
+      setLinksVisible(true);
     }
 
     return {
-      setup(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
-        rc = new GameRoughCanvas(ctx.canvas);
-        phase = 'waiting';
-        baseline = new Map();
-        streak = 0;
-        best = 0;
-        blinkDuration = 0;
-        lastResetReason = '';
-        isBlinking = false;
-        postBlinkTimer = 0;
-        moveDuration = 0;
-        moveOffender = '';
-        gazeWarning = '';
-        lastRoundTime = 0;
-        loseOffender = '';
-        calibSnapshot = null;
-        calibLandmarks = null;
-        calibGaze = new Map();
-        loseSnapshot = null;
-        loseLandmarks = null;
-        loseGaze = new Map();
-        lastLandmarks = null;
-        lastGaze = new Map();
-        hasFace = false;
+      setup(_ctx: CanvasRenderingContext2D, _gw: number, _gh: number) {
+        rc = new GameRoughCanvas(_ctx.canvas);
+        resetToReady();
 
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
         keyHandler = (e: KeyboardEvent) => {
-          if (e.code === 'Space' && phase === 'waiting' && hasFace && !isBlinking) {
+          if (e.code !== 'Space') return;
+          if (phase === 'ready' && hasFace && !isBlinking) {
             e.preventDefault();
-            startGame();
+            startTest();
+          } else if (phase === 'result') {
+            e.preventDefault();
+            resetToReady();
           }
         };
         document.addEventListener('keydown', keyHandler);
+
+        // DOM overlay: paper links, shown only on the result screen.
+        if (!linksEl) {
+          linksEl = document.createElement('div');
+          linksEl.id = 'kasina-links';
+          linksEl.style.cssText = [
+            'position:fixed', 'left:50%', 'bottom:5%', 'transform:translateX(-50%)',
+            'display:none', 'gap:0.8em', 'flex-wrap:wrap', 'justify-content:center',
+            'font-family:Sora, sans-serif', 'font-size:0.75rem', 'pointer-events:auto',
+            'z-index:10',
+          ].join(';');
+          for (const { label, url } of PAPER_LINKS) {
+            const a = document.createElement('a');
+            a.href = url; a.target = '_blank'; a.rel = 'noopener';
+            a.textContent = label;
+            a.style.cssText = `color:${stone};text-decoration:underline;`;
+            linksEl.appendChild(a);
+          }
+          document.body.appendChild(linksEl);
+        }
       },
 
       update(face: FaceData | null, dt: number) {
         if (!face) {
           hasFace = false;
           isBlinking = false;
-          if (phase === 'active') resetStreak('no face detected');
+          if (phase === 'active') {
+            noFaceDuration += dt;
+            if (noFaceDuration > MAX_NO_FACE_SEC) endTest();
+          }
           return;
         }
 
-        lastLandmarks = face.landmarks;
-        lastGaze = readGaze(face);
         hasFace = true;
+        noFaceDuration = 0;
 
-        const blinkL = face.blendshapes.get("eyeBlinkLeft") ?? 0;
-        const blinkR = face.blendshapes.get("eyeBlinkRight") ?? 0;
-        const blinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
-        isBlinking = blinking;
+        const blinkL = face.blendshapes.get('eyeBlinkLeft') ?? 0;
+        const blinkR = face.blendshapes.get('eyeBlinkRight') ?? 0;
+        isBlinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
 
-        if (phase === 'waiting') return;
+        if (phase !== 'active') return;
 
-
-
-        if (blinking) {
+        if (isBlinking) {
+          // Blinks don't contribute a sample, but the clock keeps running.
           blinkDuration += dt;
-          postBlinkTimer = MAX_BLINK_TIME;
-          if (blinkDuration > MAX_BLINK_TIME) {
-            resetStreak('eyes closed too long');
-          } else {
-            streak += dt;
-          }
-          return;
-        }
-        blinkDuration = 0;
-
-        if (postBlinkTimer > 0) {
-          postBlinkTimer -= dt;
-          streak += dt;
-          return;
-        }
-
-        const current = readGaze(face);
-        let outOfBounds = false;
-        let halfOffender: Gaze | '' = '';
-        let halfPositive = true;
-        let offender: Gaze | '' = '';
-        let offenderPositive = true;
-        for (const name of GAZE_SHAPES) {
-          const raw = (current.get(name) ?? 0) - (baseline.get(name) ?? 0);
-          const diff = Math.abs(raw);
-          if (diff > MOVE_THRESHOLD) {
-            outOfBounds = true;
-            offender = name;
-            offenderPositive = raw > 0;
-            break;
-          } else if (diff > MOVE_THRESHOLD / 2 && !halfOffender) {
-            halfOffender = name;
-            halfPositive = raw > 0;
-          }
-        }
-
-        gazeWarning = outOfBounds && offender
-          ? `don't look ${describeGaze(offender, offenderPositive)}`
-          : halfOffender
-          ? `don't look ${describeGaze(halfOffender, halfPositive)}`
-          : '';
-
-        if (outOfBounds && offender) {
-          moveOffender = offender;
-          moveDuration += dt;
-          if (moveDuration >= MOVE_GRACE) {
-            const base = Math.round((baseline.get(offender) ?? 0) * 100);
-            const cur = Math.round((current.get(offender) ?? 0) * 100);
-            resetStreak(`looked ${describeGaze(offender, offenderPositive)} (${offender} ${base}% → ${cur}%)`, offender);
-          } else {
-            streak += dt;
-          }
+          if (blinkDuration > MAX_BLINK_SEC) { endTest(); return; }
         } else {
-          moveDuration = 0;
-          moveOffender = '';
-          streak += dt;
+          blinkDuration = 0;
+          const [gx, gy] = extractGazeDeg(face.blendshapes);
+          addSample(stats, gx, gy);
+        }
+
+        elapsed += dt;
+
+        // Evaluate checkpoints in order. Cumulative BCEA over the whole test so far.
+        while (checkpointsPassed < CHECKPOINTS_SEC.length
+               && elapsed >= CHECKPOINTS_SEC[checkpointsPassed]) {
+          const bcea = bcea95(stats);
+          if (bcea <= THRESHOLDS_DEG2[checkpointsPassed]) {
+            checkpointsPassed++;
+            playTick();
+            if (checkpointsPassed === CHECKPOINTS_SEC.length) { endTest(); return; }
+          } else {
+            endTest();
+            return;
+          }
         }
       },
 
-      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, debug?: boolean) {
-
+      draw(ctx: CanvasRenderingContext2D, gw: number, gh: number, _debug?: boolean) {
         const cx = gw / 2;
-        const cy = gh * 0.25;
+        const cy = gh / 2;
 
-        // fixation dot
-        const dotColor = lavender;
-        rc.circle(cx, cy, 0.4, { fill: dotColor, fillStyle: 'solid', stroke: stone, strokeWidth: 0.02 });
+        // Fixation target — circle with cross + center point, visible in all phases.
+        rc.circle(cx, cy, 0.5, { fill: charcoal, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
+        ctx.save();
+        ctx.strokeStyle = cream;
+        ctx.lineWidth = 0.05;
+        ctx.beginPath();
+        ctx.moveTo(cx - 0.22, cy); ctx.lineTo(cx + 0.22, cy);
+        ctx.moveTo(cx, cy - 0.22); ctx.lineTo(cx, cy + 0.22);
+        ctx.stroke();
+        ctx.fillStyle = cream;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
 
-        if (phase === 'waiting') {
-          if (lastRoundTime > 0) {
-            pxText(ctx, `${formatTime(lastRoundTime)} — ${getLevel(lastRoundTime)}`, cx, cy - 1.2, '0.6px Fredoka', charcoal, 'center');
+        if (phase === 'ready') {
+          pxText(ctx, 'One-Minute Focus Test', cx, 1.4, '0.7px Fredoka', charcoal, 'center');
+          pxText(ctx, 'How long can you actually hold still?', cx, 2.3, '0.45px Fredoka', stone, 'center');
+          pxText(ctx, 'Most people fail in under 30 seconds.', cx, 3.0, '0.32px Sora', stone, 'center');
+          const prompt = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
+          pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
+          pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
+        } else if (phase === 'active') {
+          // Silent timer per spec — no visible clock. Show only tracking warnings.
+          if (!hasFace) {
+            pxText(ctx, 'show your face', cx, cy - 1.5, '0.55px Fredoka', rose, 'center');
+          } else if (isBlinking) {
+            pxText(ctx, 'open your eyes', cx, cy - 1.5, '0.55px Fredoka', stone, 'center');
           }
-          const startMsg = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
-          const msg = lastResetReason ? `${lastResetReason} — ${startMsg}` : startMsg;
-          pxText(ctx, msg, cx, cy + 1.2, '0.4px Fredoka', stone, 'center');
-          const cropY = cy + 2;
-          const eyeW = 2.5;
-          const gap = 0.3;
-          const totalW = eyeW * 2 + gap;
-          const rowGap = 0.3;
-          if (calibSnapshot && calibLandmarks) {
-            pxText(ctx, 'calibrated', cx, cropY - 0.3, '0.25px Fredoka', stone, 'center');
-            const leftH = drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2, cropY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, calibGaze, loseOffender);
-            drawEyeCrop(ctx, calibSnapshot, calibLandmarks, cx - totalW / 2 + eyeW + gap, cropY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, calibGaze, loseOffender);
-            if (loseSnapshot && loseLandmarks) {
-              const lostY = cropY + leftH + rowGap;
-              pxText(ctx, 'lost', cx, lostY - 0.3, '0.25px Fredoka', stone, 'center');
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2, lostY, eyeW, gw, gh, RIGHT_EYE_CORNERS, RIGHT_GAZE_DIRS, loseGaze, loseOffender);
-              drawEyeCrop(ctx, loseSnapshot, loseLandmarks, cx - totalW / 2 + eyeW + gap, lostY, eyeW, gw, gh, LEFT_EYE_CORNERS, LEFT_GAZE_DIRS, loseGaze, loseOffender);
-            }
+        } else if (phase === 'result' && resultTier) {
+          const color = TIER_COLORS[resultTier];
+          pxText(ctx, resultTier, cx, 1.8, '1.5px Fredoka', color, 'center');
+          // Wrap long roast manually — pxText doesn't wrap.
+          const lines = wrap(ROASTS[resultTier], 44);
+          let y = 3.3;
+          for (const line of lines) {
+            pxText(ctx, line, cx, y, '0.4px Sora', charcoal, 'center');
+            y += 0.6;
           }
-        } else if (isBlinking && blinkDuration > BLINK_WARNING_TIME) {
-          pxText(ctx, 'open your eyes', cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
-        } else if (gazeWarning) {
-          pxText(ctx, gazeWarning, cx, cy - 1.2, '0.8px Fredoka', stone, 'center');
-        } else {
-          pxText(ctx, formatTime(streak), cx, cy - 1.2, '0.8px Fredoka', charcoal, 'center');
-          if (best > 0) {
-            pxText(ctx, `best: ${formatTime(best)} — ${getLevel(best)}`, cx, cy + 1.2, '0.35px Fredoka', stone, 'center');
-          }
-        }
-
-        if (debug && lastLandmarks) {
-          drawLandmarks(ctx, lastLandmarks, 0, 0, gw, gh, gw, gh, true);
+          pxText(ctx, `BCEA@95%: ${resultBcea.toFixed(2)} deg²`, cx, gh - 2.7, '0.28px Sora', stone, 'center');
+          pxText(ctx, 'space to retake', cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
         }
       },
 
       extraButtons: [
-        { label: 'start (space)', key: ' ', onClick: () => { if (phase === 'waiting' && hasFace && !isBlinking) startGame(); } },
+        {
+          label: 'start (space)', key: ' ',
+          onClick: () => {
+            if (phase === 'ready' && hasFace && !isBlinking) startTest();
+            else if (phase === 'result') resetToReady();
+          },
+        },
       ],
 
       demo() {
-        phase = 'active';
-        streak = 4;
-        best = 7;
+        // Static preview: frozen on a result screen.
+        phase = 'result';
+        resultTier = 'Deep Work';
+        resultBcea = 2.4;
+        checkpointsPassed = 3;
       },
 
       cleanup() {
@@ -445,7 +283,28 @@ export const kasina: Experiment = {
           document.removeEventListener('keydown', keyHandler);
           keyHandler = null;
         }
+        if (linksEl && linksEl.parentElement) {
+          linksEl.parentElement.removeChild(linksEl);
+          linksEl = null;
+        }
+        if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
       },
     };
   })(),
 };
+
+function wrap(text: string, maxChars: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxChars && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = cur ? cur + ' ' + w : w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
