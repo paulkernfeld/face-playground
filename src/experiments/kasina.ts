@@ -36,8 +36,9 @@ const TIER_COLORS: Record<Tier, string> = {
   'Monk': sage, 'Deep Work': teal, 'Scatter': honey, 'Scroll': lavender, 'Cooked': rose,
 };
 
-const BLINK_THRESHOLD = 0.5;
+const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_SEC = 2.0;
+const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the lid reopens
 const MAX_NO_FACE_SEC = 1.5;
 const SACCADE_DEG = 2.0;   // samples farther than this from center count as saccadic intrusions
 
@@ -91,6 +92,7 @@ export const kasina: Experiment = {
     let invalidCount: number;    // frames during active phase that didn't yield a sample (blink/no-face)
 
     let blinkDuration: number;
+    let postBlinkTimer: number;
     let noFaceDuration: number;
     let isBlinking: boolean;
     let hasFace: boolean;
@@ -126,6 +128,7 @@ export const kasina: Experiment = {
       stats = createBceaStats();
       checkpointsPassed = 0;
       blinkDuration = 0;
+      postBlinkTimer = 0;
       noFaceDuration = 0;
       samples = [];
       saccadeCount = 0;
@@ -454,10 +457,15 @@ export const kasina: Experiment = {
         if (phase !== 'active') return;
 
         if (isBlinking) {
-          // Blinks don't contribute a sample, but the clock keeps running.
           blinkDuration += dt;
+          postBlinkTimer = POST_BLINK_GRACE_SEC;
           invalidCount++;
           if (blinkDuration > MAX_BLINK_SEC) { endTest(); return; }
+        } else if (postBlinkTimer > 0) {
+          // Gaze blendshapes lag the lid reopening — skip a few frames to avoid spurious deviations.
+          postBlinkTimer -= dt;
+          blinkDuration = 0;
+          invalidCount++;
         } else {
           blinkDuration = 0;
           const [gx, gy] = extractGazeDeg(face.blendshapes);
