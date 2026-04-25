@@ -15,11 +15,9 @@ const BLENDSHAPE_TO_DEG = 10;
 
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
 // Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
-// (N=358 IR fixation data). Webcam blendshape gaze is ~3–6× noisier than IR, so
-// these are the baseline scaled by NOISE_SCALE. Tune empirically with pilot data.
-const NOISE_SCALE = 3;
+// (N=358 IR fixation data). Tune empirically with pilot data.
 const CHECKPOINTS_SEC =      [3,   10,  30,  60];
-const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0].map(t => t * NOISE_SCALE);
+const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0];
 const TEST_CEILING_SEC = 180;
 
 type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
