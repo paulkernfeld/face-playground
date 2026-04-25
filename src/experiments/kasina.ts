@@ -20,17 +20,17 @@ const CHECKPOINTS_SEC =      [3,   10,  30,  60];
 const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0].map(t => t * NOISE_SCALE);
 const TEST_CEILING_SEC = 180;
 
-type Tier = 'Cooked' | 'Scroll' | 'Scatter' | 'Deep Work' | 'Monk';
-const TIERS: Tier[] = ['Cooked', 'Scroll', 'Scatter', 'Deep Work', 'Monk'];
+type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
+const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked'];
 const ROASTS: Record<Tier, string> = {
-  'Monk':      "You held still for a minute. Most modern brains can't. What are you doing with your life.",
-  'Deep Work': "Top-shelf focus. You probably get things done.",
-  'Scatter':   "A functional modern brain. Congratulations?",
-  'Scroll':    "Your attention is in feed-mode. You are most of us.",
-  'Cooked':    "lol",
+  'Cracked':     "You held still for a minute. Most modern brains can't. What are you doing with your life.",
+  'Locked In':   "Top-shelf focus. You probably get things done.",
+  'Normie': "A functional modern brain. Congratulations?",
+  'Scroller':    "Your attention is in feed-mode. You are most of us.",
+  'Cooked':      "lol",
 };
 const TIER_COLORS: Record<Tier, string> = {
-  'Monk': sage, 'Deep Work': teal, 'Scatter': honey, 'Scroll': lavender, 'Cooked': rose,
+  'Cracked': sage, 'Locked In': teal, 'Normie': honey, 'Scroller': lavender, 'Cooked': rose,
 };
 
 const BLINK_THRESHOLD = 0.2;
@@ -160,7 +160,7 @@ export const kasina: Experiment = {
     // Each tier threshold is rendered as an area-equivalent circle (r = √(t/π)).
     // BCEA is variance-based (deg²) and the plot axes are linear deviation (deg),
     // so this is an approximation — but it lets you eyeball "am I inside Monk?".
-    const RING_TIERS: Tier[] = ['Scroll', 'Scatter', 'Deep Work', 'Monk'];
+    const RING_TIERS: Tier[] = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
 
     function drawScatterPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
       // Dark background for "glowing dots" aesthetic (share-worthy contrast).
@@ -269,7 +269,7 @@ export const kasina: Experiment = {
     // Horizontal threshold lines are drawn at the area-equivalent radius of each
     // BCEA threshold — an approximate but visually useful translation from deg²
     // variance into deg of deviation.
-    const CHECKPOINT_LABELS = ['Scroll', 'Scatter', 'Deep Work', 'Monk'];
+    const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
 
     function drawTimeSeriesPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
       ctx.save();
@@ -603,10 +603,10 @@ export const kasina: Experiment = {
       ],
 
       demo() {
-        // Static preview: frozen on a Deep Work result with plausible gaze samples.
+        // Static preview: frozen on a Locked In result with plausible gaze samples.
         clearRun();
         phase = 'result';
-        resultTier = 'Deep Work';
+        resultTier = 'Locked In';
         checkpointsPassed = 3;
         const N = 180;
         const duration = 60;
