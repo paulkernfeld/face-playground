@@ -61,6 +61,7 @@ interface Sample {
   x: number;         // degrees (screen x, + = right)
   y: number;         // degrees (screen y, + = down)
   dev: number;       // √(x² + y²) — angular deviation from target center
+  bcea: number;      // cumulative BCEA@95% over all samples up to and including this one (deg²)
 }
 
 function extractGazeDeg(bs: Blendshapes): [number, number] {
@@ -270,9 +271,6 @@ export const kasina: Experiment = {
       pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
     }
 
-    // Horizontal threshold lines are drawn at the area-equivalent radius of each
-    // BCEA threshold — an approximate but visually useful translation from deg²
-    // variance into deg of deviation.
     const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
 
     function drawTimeSeriesPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
@@ -286,28 +284,41 @@ export const kasina: Experiment = {
       const plotW = pw - leftPad - rightPad;
       const plotH = ph - topPad - bottomPad;
 
-      const maxThresholdR = Math.sqrt(TIER_THRESHOLDS_DEG2[0] / Math.PI);
-      const yMax = Math.max(peakDev, maxThresholdR, 2.5) * 1.1;
+      const yMax = TIME_SERIES_MAX_DEG2;
       const xMax = TEST_CEILING_SEC;
-
       const tx = (t: number) => plotX0 + (t / xMax) * plotW;
-      const ty = (d: number) => plotY0 + plotH - (d / yMax) * plotH;
+      const ty = (v: number) => plotY0 + plotH - (Math.min(v, yMax) / yMax) * plotH;
 
-      pxText(ctx, 'deviation over time', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
+      pxText(ctx, 'BCEA over time — stay under the ceiling', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
 
-      // Horizontal threshold lines (area-equivalent radii).
-      ctx.strokeStyle = lavender;
-      ctx.lineWidth = 0.018;
-      ctx.setLineDash([0.08, 0.08]);
-      for (const t of TIER_THRESHOLDS_DEG2) {
-        const r = Math.sqrt(t / Math.PI);
-        if (r > yMax) continue;
+      // Stair-step "fail ceiling" — at each checkpoint the threshold ratchets down.
+      // If your trace ever crosses above the step at time t, you fail at the next
+      // checkpoint. Each segment is colored by the tier you're trying to clear.
+      ctx.lineWidth = 0.04;
+      const ceilingSegments: { t0: number; t1: number; threshold: number; tier: Tier }[] = [];
+      for (let i = 0; i < CHECKPOINTS_SEC.length; i++) {
+        const t0 = i === 0 ? 0 : CHECKPOINTS_SEC[i - 1];
+        ceilingSegments.push({
+          t0,
+          t1: CHECKPOINTS_SEC[i],
+          threshold: TIER_THRESHOLDS_DEG2[i],
+          tier: RING_TIERS[i],
+        });
+      }
+      // Trailing flat segment after final checkpoint stays at the toughest threshold.
+      ceilingSegments.push({
+        t0: CHECKPOINTS_SEC[CHECKPOINTS_SEC.length - 1],
+        t1: TEST_CEILING_SEC,
+        threshold: TIER_THRESHOLDS_DEG2[TIER_THRESHOLDS_DEG2.length - 1],
+        tier: RING_TIERS[RING_TIERS.length - 1],
+      });
+      for (const seg of ceilingSegments) {
+        ctx.strokeStyle = TIER_COLORS[seg.tier];
         ctx.beginPath();
-        ctx.moveTo(plotX0, ty(r));
-        ctx.lineTo(plotX0 + plotW, ty(r));
+        ctx.moveTo(tx(seg.t0), ty(seg.threshold));
+        ctx.lineTo(tx(seg.t1), ty(seg.threshold));
         ctx.stroke();
       }
-      ctx.setLineDash([]);
 
       // Vertical checkpoint markers.
       ctx.strokeStyle = stone;
@@ -323,14 +334,14 @@ export const kasina: Experiment = {
       }
       ctx.setLineDash([]);
 
-      // Trace.
+      // Running BCEA trace.
       ctx.strokeStyle = charcoal;
       ctx.lineWidth = 0.03;
       ctx.beginPath();
       let started = false;
       for (const s of samples) {
         const x = tx(s.t);
-        const y = ty(Math.min(s.dev, yMax));
+        const y = ty(s.bcea);
         if (!started) { ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
       }
@@ -345,10 +356,10 @@ export const kasina: Experiment = {
       ctx.lineTo(plotX0 + plotW, plotY0 + plotH);
       ctx.stroke();
 
-      pxText(ctx, `${yMax.toFixed(1)}°`, plotX0 - 0.08, plotY0 + 0.18, '0.2px Sora', stone, 'right');
-      pxText(ctx, '0°',                   plotX0 - 0.08, plotY0 + plotH - 0.02, '0.2px Sora', stone, 'right');
-      pxText(ctx, '0s',                   plotX0,                 plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
-      pxText(ctx, `${TEST_CEILING_SEC}s`, plotX0 + plotW,         plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+      pxText(ctx, `${yMax.toFixed(0)} deg²`, plotX0 - 0.08, plotY0 + 0.18, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0',                        plotX0 - 0.08, plotY0 + plotH - 0.02, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0s',                       plotX0,                 plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+      pxText(ctx, `${TEST_CEILING_SEC}s`,     plotX0 + plotW,         plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
 
       ctx.restore();
     }
@@ -469,7 +480,7 @@ export const kasina: Experiment = {
             const [gx, gy] = extractGazeDeg(face.blendshapes);
             const dev = Math.hypot(gx, gy);
             elapsed += dt;
-            samples.push({ t: elapsed, x: gx, y: gy, dev });
+            samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: 0 });
             const cutoff = elapsed - PREVIEW_WINDOW_SEC;
             while (samples.length && samples[0].t < cutoff) samples.shift();
             // Recompute stats and peakDev from the windowed samples.
@@ -500,7 +511,8 @@ export const kasina: Experiment = {
           const [gx, gy] = extractGazeDeg(face.blendshapes);
           addSample(stats, gx, gy);
           const dev = Math.hypot(gx, gy);
-          samples.push({ t: elapsed, x: gx, y: gy, dev });
+          const bceaAt = bcea95(stats);
+          samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: bceaAt });
           validCount++;
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
@@ -615,6 +627,7 @@ export const kasina: Experiment = {
         const N = 180;
         const duration = 60;
         // Box-Muller-ish deterministic noise for reproducible preview.
+        const eyePoints: { t: number; x: number; y: number }[] = [];
         for (let i = 0; i < N; i++) {
           const t = (i / N) * duration;
           const u1 = ((i * 13 + 7) % 97) / 97 + 0.01;
@@ -622,26 +635,21 @@ export const kasina: Experiment = {
           const r = Math.sqrt(-2 * Math.log(u1));
           const x = r * Math.cos(2 * Math.PI * u2) * 0.35;
           const y = r * Math.sin(2 * Math.PI * u2) * 0.35;
+          eyePoints.push({ t, x, y });
+        }
+        eyePoints.push({ t: 20, x: 2.3, y: -0.8 });
+        eyePoints.push({ t: 47, x: -1.6, y: 2.1 });
+        eyePoints.sort((a, b) => a.t - b.t);
+        for (const { t, x, y } of eyePoints) {
           addSample(stats, x, y);
           const dev = Math.hypot(x, y);
-          samples.push({ t, x, y, dev });
+          const bceaAt = bcea95(stats);
+          samples.push({ t, x, y, dev, bcea: bceaAt });
           validCount++;
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
         }
-        // Throw in a couple of intrusions for visible red dots.
-        const intrusions: [number, number, number][] = [[20, 2.3, -0.8], [47, -1.6, 2.1]];
-        for (const [t, x, y] of intrusions) {
-          addSample(stats, x, y);
-          const dev = Math.hypot(x, y);
-          samples.push({ t, x, y, dev });
-          validCount++;
-          if (dev > SACCADE_DEG) saccadeCount++;
-          if (dev > peakDev) peakDev = dev;
-          sumDev += dev;
-        }
-        samples.sort((a, b) => a.t - b.t);
         elapsed = duration;
         resultBcea = bcea95(stats);
       },
