@@ -54,6 +54,12 @@ const TIME_SERIES_MAX_DEG2 = 15;
 const NOSE_TIP = 1;
 const GU_TO_CAMERA_DEG = 60 / 16;   // ≈ 3.75° per game unit
 
+// Slow-drift calibration point. The "center" the user is fixating on is allowed to
+// creep at this rate (deg/s) toward where their eyes are actually pointing — so a
+// gradual posture shift doesn't accumulate as BCEA. Fast saccades still register
+// because the calibration can't keep up. Reset at the start of ready and active.
+const CALIBRATION_DRIFT_DEG_PER_SEC = 3;
+
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
   { label: 'microsaccades & attention', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7962679/' },
@@ -110,6 +116,11 @@ export const kasina: Experiment = {
     let noseStats: BceaStats;
     let noseValidCount: number;
 
+    // Slow-drifting calibration center (deg). Samples are recorded relative to this,
+    // so a gradual posture shift doesn't show up as a fixation error.
+    let calibX: number;
+    let calibY: number;
+
     let blinkDuration: number;
     let postBlinkTimer: number;
     let noFaceDuration: number;
@@ -157,6 +168,22 @@ export const kasina: Experiment = {
       invalidCount = 0;
       noseStats = createBceaStats();
       noseValidCount = 0;
+      calibX = 0;
+      calibY = 0;
+    }
+
+    // Move the calibration point a fixed angular speed toward the latest gaze
+    // direction. Returns the gaze position relative to the (post-update) center.
+    function applyCalibration(gx: number, gy: number, dt: number): [number, number] {
+      const dx = gx - calibX;
+      const dy = gy - calibY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        const step = Math.min(CALIBRATION_DRIFT_DEG_PER_SEC * dt, dist);
+        calibX += (dx / dist) * step;
+        calibY += (dy / dist) * step;
+      }
+      return [gx - calibX, gy - calibY];
     }
 
     function resetToReady() {
@@ -495,7 +522,8 @@ export const kasina: Experiment = {
           } else if (postBlinkTimer > 0) {
             postBlinkTimer -= dt;
           } else {
-            const [gx, gy] = extractGazeDeg(face.blendshapes);
+            const [rawX, rawY] = extractGazeDeg(face.blendshapes);
+            const [gx, gy] = applyCalibration(rawX, rawY, dt);
             const dev = Math.hypot(gx, gy);
             elapsed += dt;
             samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: 0 });
@@ -533,7 +561,8 @@ export const kasina: Experiment = {
           invalidCount++;
         } else {
           blinkDuration = 0;
-          const [gx, gy] = extractGazeDeg(face.blendshapes);
+          const [rawX, rawY] = extractGazeDeg(face.blendshapes);
+          const [gx, gy] = applyCalibration(rawX, rawY, dt);
           addSample(stats, gx, gy);
           const dev = Math.hypot(gx, gy);
           const bceaAt = bcea95(stats);
