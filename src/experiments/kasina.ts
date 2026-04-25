@@ -24,13 +24,6 @@ const TEST_CEILING_SEC = 180;
 
 type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
 const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked'];
-const ROASTS: Record<Tier, string> = {
-  'Cracked':     "You held still for a minute. Most modern brains can't. What are you doing with your life.",
-  'Locked In':   "Top-shelf focus. You probably get things done.",
-  'Normie': "A functional modern brain. Congratulations?",
-  'Scroller':    "Your attention is in feed-mode. You are most of us.",
-  'Cooked':      "lol",
-};
 const TIER_COLORS: Record<Tier, string> = {
   'Cracked': sage, 'Locked In': teal, 'Normie': honey, 'Scroller': lavender, 'Cooked': rose,
 };
@@ -614,9 +607,10 @@ export const kasina: Experiment = {
         }
 
         if (phase === 'ready') {
-          pxText(ctx, 'One-Minute Focus Test', cx, 1.4, '0.7px Fredoka', charcoal, 'center');
-          pxText(ctx, 'How long can you actually hold still?', cx, 2.3, '0.45px Fredoka', stone, 'center');
-          pxText(ctx, 'Most people fail in under 30 seconds.', cx, 3.0, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'One-Minute Focus Test', cx, 1.0, '0.7px Fredoka', charcoal, 'center');
+          pxText(ctx, 'Pick something to look at — the dot, anything.', cx, 1.9, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'Hit start, then hold your gaze on it until the test ends.', cx, 2.4, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'Steady gaze ≈ steady attention. We measure how steady.',  cx, 2.9, '0.32px Sora', stone, 'center');
           const prompt = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
@@ -637,14 +631,7 @@ export const kasina: Experiment = {
         } else if (phase === 'result' && resultTier) {
           const tierColor = TIER_COLORS[resultTier];
 
-          // Header: tier + roast
-          pxText(ctx, resultTier, cx, 0.95, '1.1px Fredoka', tierColor, 'center');
-          const lines = wrap(ROASTS[resultTier], 60);
-          let y = 1.75;
-          for (const line of lines) {
-            pxText(ctx, line, cx, y, '0.32px Sora', charcoal, 'center');
-            y += 0.45;
-          }
+          pxText(ctx, resultTier, cx, 1.4, '1.4px Fredoka', tierColor, 'center');
 
           // Scatter panel (hero / shareable artifact) — square, left-centered.
           drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
@@ -732,19 +719,3 @@ export const kasina: Experiment = {
     };
   })(),
 };
-
-function wrap(text: string, maxChars: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let cur = '';
-  for (const w of words) {
-    if ((cur + ' ' + w).trim().length > maxChars && cur) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = cur ? cur + ' ' + w : w;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
