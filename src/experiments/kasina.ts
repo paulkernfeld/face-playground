@@ -36,6 +36,7 @@ const TIER_COLORS: Record<Tier, string> = {
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_SEC = 2.0;
 const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the lid reopens
+const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on the ready screen
 const MAX_NO_FACE_SEC = 1.5;
 const SACCADE_DEG = 2.0;   // samples farther than this from center count as saccadic intrusions
 
@@ -454,6 +455,30 @@ export const kasina: Experiment = {
         const blinkR = face.blendshapes.get('eyeBlinkRight') ?? 0;
         isBlinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
 
+        if (phase === 'ready') {
+          // Rolling-window live preview. Same blink/post-blink filtering as the test.
+          if (isBlinking) {
+            postBlinkTimer = POST_BLINK_GRACE_SEC;
+          } else if (postBlinkTimer > 0) {
+            postBlinkTimer -= dt;
+          } else {
+            const [gx, gy] = extractGazeDeg(face.blendshapes);
+            const dev = Math.hypot(gx, gy);
+            elapsed += dt;
+            samples.push({ t: elapsed, x: gx, y: gy, dev });
+            const cutoff = elapsed - PREVIEW_WINDOW_SEC;
+            while (samples.length && samples[0].t < cutoff) samples.shift();
+            // Recompute stats and peakDev from the windowed samples.
+            stats = createBceaStats();
+            peakDev = 0;
+            for (const s of samples) {
+              addSample(stats, s.x, s.y);
+              if (s.dev > peakDev) peakDev = s.dev;
+            }
+          }
+          return;
+        }
+
         if (phase !== 'active') return;
 
         if (isBlinking) {
@@ -525,6 +550,8 @@ export const kasina: Experiment = {
           const prompt = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
+          // Live gaze preview (rolling window) with all tier rings for context.
+          drawScatterPanel(ctx, 0.4, 5.4, 3.4, 3.4);
         } else if (phase === 'active') {
           // Silent timer per spec — no visible clock. Show only tracking warnings.
           if (!hasFace) {
