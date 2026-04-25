@@ -2,7 +2,7 @@ import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
 import { charcoal, stone, rose, cream, honey, sage } from '../palette';
-import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type BceaEllipse } from '../bcea';
+import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats } from '../bcea';
 
 // One-Minute Focus Test — spec v0.1.
 // Stare at the dot; BCEA@95% of your gaze over the whole test is checked at each checkpoint.
@@ -38,12 +38,6 @@ const SACCADE_DEG = 2.0;            // samples farther than this from center cou
 // inside the panel; TIME_SERIES_MAX_DEG2 is set so the easiest threshold is mid-plot.
 const SCATTER_MAX_DEG = 2.5;
 const TIME_SERIES_MAX_DEG2 = 15;
-
-// Nose-tip BCEA is computed in game units, then approximated to camera-FOV deg²
-// using a typical 60° H × 16-game-unit-wide canvas. This is "how much of the
-// camera view the nose swept across", not head rotation in user-perspective deg.
-const NOSE_TIP = 1;
-const GU_TO_CAMERA_DEG = 60 / 16;   // ≈ 3.75° per game unit
 
 // Slow-drift calibration point. The "center" the user is fixating on is allowed to
 // creep at this rate (deg/s) toward where their eyes are actually pointing — so a
@@ -101,12 +95,6 @@ export const kasina: Experiment = {
     let validCount: number;
     let invalidCount: number;    // frames during active phase that didn't yield a sample (blink/no-face)
 
-    // Head-movement baseline. Nose tip is sampled every frame regardless of blink
-    // because head wobble is independent of eye state — it tells you how stable
-    // the body is, which sets a floor for how stable the eyes can be.
-    let noseStats: BceaStats;
-    let noseValidCount: number;
-
     // Slow-drifting calibration center (deg). Samples are recorded relative to this,
     // so a gradual posture shift doesn't show up as a fixation error. On the first
     // valid gaze sample after a phase reset we snap calib to the current gaze, so
@@ -160,8 +148,6 @@ export const kasina: Experiment = {
       sumDev = 0;
       validCount = 0;
       invalidCount = 0;
-      noseStats = createBceaStats();
-      noseValidCount = 0;
       calibX = 0;
       calibY = 0;
       needsCalibReset = true;
@@ -305,13 +291,9 @@ export const kasina: Experiment = {
 
       ctx.restore();
 
-      // Labels on dark background. BCEA displayed is live/cumulative, not a frozen value.
+      // Single live/cumulative BCEA readout in the header.
       const liveBcea = bcea95(stats);
-      if (resultTier) {
-        pxText(ctx, resultTier, px + pw - 0.2, py + 0.4, '0.4px Fredoka', TIER_COLORS[resultTier], 'right');
-      }
       pxText(ctx, `BCEA@95%: ${liveBcea.toFixed(2)} deg²`, px + 0.2, py + 0.4, '0.28px Sora', cream, 'left');
-      pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
     }
 
     const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
@@ -331,8 +313,6 @@ export const kasina: Experiment = {
       const xMax = TEST_CEILING_SEC;
       const tx = (t: number) => plotX0 + (t / xMax) * plotW;
       const ty = (v: number) => plotY0 + plotH - (Math.min(v, yMax) / yMax) * plotH;
-
-      pxText(ctx, 'BCEA over time — stay under the ceiling', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
 
       // Stair-step "fail ceiling" — at each checkpoint the threshold ratchets down.
       // If your trace ever crosses above the step at time t, you fail at the next
@@ -429,17 +409,13 @@ export const kasina: Experiment = {
       const meanDev = validCount > 0 ? sumDev / validCount : 0;
       const validPct = totalFrames > 0 ? (100 * validCount / totalFrames) : 0;
 
-      // Convert nose BCEA from game-units² to camera-FOV deg² (rough comparison
-      // baseline against the eye BCEA — same units, different physical thing).
-      const headBcea = bcea95(noseStats) * GU_TO_CAMERA_DEG * GU_TO_CAMERA_DEG;
       const cells: { label: string; value: string; color?: string }[] = [
         { label: 'sample rate',    value: `${hz.toFixed(1)} Hz`, color: sampleRateColor(hz) },
         { label: '% valid',        value: `${validPct.toFixed(0)}%` },
         { label: 'intrusions',     value: `${saccadeCount}` },
         { label: 'peak error',     value: `${peakDev.toFixed(2)}°` },
         { label: 'mean error',     value: `${meanDev.toFixed(2)}°` },
-        { label: 'eye BCEA',       value: `${resultBcea.toFixed(2)} deg²` },
-        { label: 'head BCEA',      value: `${headBcea.toFixed(2)} deg²` },
+        { label: 'BCEA',           value: `${resultBcea.toFixed(2)} deg²` },
         { label: 'duration',       value: `${elapsed.toFixed(1)}s` },
       ];
 
@@ -544,13 +520,6 @@ export const kasina: Experiment = {
 
         if (phase !== 'active') return;
 
-        // Nose-tip jitter is independent of blink; sample it every frame.
-        const nose = face.landmarks[NOSE_TIP];
-        if (nose) {
-          addSample(noseStats, nose.x, nose.y);
-          noseValidCount++;
-        }
-
         if (isBlinking) {
           blinkDuration += dt;
           postBlinkTimer = POST_BLINK_GRACE_SEC;
@@ -642,19 +611,16 @@ export const kasina: Experiment = {
 
           pxText(ctx, resultTier, cx, 1.4, '1.4px Fredoka', tierColor, 'center');
 
-          // Scatter panel (hero / shareable artifact) — square, left-centered.
-          drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
-          // Right column: time-series on top, diagnostics below.
-          drawTimeSeriesPanel(ctx, 7.3, 2.5, 8.3, 2.7);
-          drawDiagnosticsPanel(ctx, 7.3, 5.4, 8.3, 3.1);
+          // Panels end at y≈7.8 to clear the bottom touch button bar.
+          drawScatterPanel(ctx, 0.5, 2.5, 6.5, 5.3);
+          drawTimeSeriesPanel(ctx, 7.3, 2.5, 8.3, 2.5);
+          drawDiagnosticsPanel(ctx, 7.3, 5.1, 8.3, 2.7);
 
           // Low-sample-rate trust banner.
           const hz = sampleRateHz();
           if (hz > 0 && hz < 15) {
-            pxText(ctx, 'low sample rate — consider retaking with better lighting', cx, gh - 0.8, '0.26px Sora', rose, 'center');
+            pxText(ctx, 'low sample rate — consider retaking with better lighting', cx, gh - 1.1, '0.26px Sora', rose, 'center');
           }
-
-          pxText(ctx, 'space to retake', cx, gh - 0.35, '0.4px Fredoka', charcoal, 'center');
         }
       },
 
@@ -699,16 +665,6 @@ export const kasina: Experiment = {
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
-        }
-        // Fake nose-tip drift (tight, in game units) to give the head-BCEA cell a value.
-        for (let i = 0; i < N; i++) {
-          const u1 = ((i * 17 + 3) % 89) / 89 + 0.01;
-          const u2 = ((i * 23 + 5) % 71) / 71 + 0.01;
-          const r = Math.sqrt(-2 * Math.log(u1));
-          const nx = 8 + r * Math.cos(2 * Math.PI * u2) * 0.02;
-          const ny = 4.5 + r * Math.sin(2 * Math.PI * u2) * 0.015;
-          addSample(noseStats, nx, ny);
-          noseValidCount++;
         }
         elapsed = duration;
         resultBcea = bcea95(stats);
