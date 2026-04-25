@@ -49,7 +49,7 @@ const GU_TO_CAMERA_DEG = 60 / 16;   // ≈ 3.75° per game unit
 // creep at this rate (deg/s) toward where their eyes are actually pointing — so a
 // gradual posture shift doesn't accumulate as BCEA. Fast saccades still register
 // because the calibration can't keep up. Reset at the start of ready and active.
-const CALIBRATION_DRIFT_DEG_PER_SEC = 3;
+const CALIBRATION_DRIFT_DEG_PER_SEC = 1;
 
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
