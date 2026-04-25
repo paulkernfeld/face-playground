@@ -32,6 +32,7 @@ const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the li
 const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on the ready screen
 const MAX_NO_FACE_SEC = 1.5;
 const SACCADE_DEG = 2.0;            // samples farther than this from center count as saccadic intrusions
+const START_GATE_DEG = 1.0;         // ready→active is blocked until current gaze sits within this of the calibration point
 
 // Plot ranges are fixed (no auto-zoom) so "your trace crossed the line = you lose"
 // is a clean visual semantic. SCATTER_MAX_DEG is set so the largest tier ring sits
@@ -182,6 +183,18 @@ export const kasina: Experiment = {
       resultTier = null;
       resultBcea = 0;
       setLinksVisible(false);
+    }
+
+    // Gaze-stability gate for ready→active. The calibration center drifts toward
+    // the user's gaze at CALIBRATION_DRIFT_DEG_PER_SEC, so "hold still for ~1s"
+    // is enough to clear this — but actively looking around won't.
+    function isGazeStable(): boolean {
+      if (samples.length === 0) return false;
+      return samples[samples.length - 1].dev < START_GATE_DEG;
+    }
+
+    function canStart(): boolean {
+      return phase === 'ready' && hasFace && !isBlinking && isGazeStable();
     }
 
     function startTest() {
@@ -445,7 +458,7 @@ export const kasina: Experiment = {
         if (keyHandler) document.removeEventListener('keydown', keyHandler);
         keyHandler = (e: KeyboardEvent) => {
           if (e.code !== 'Space') return;
-          if (phase === 'ready' && hasFace && !isBlinking) {
+          if (canStart()) {
             e.preventDefault();
             startTest();
           } else if (phase === 'result') {
@@ -595,8 +608,12 @@ export const kasina: Experiment = {
           pxText(ctx, 'Pick something to look at — the dot, anything.', cx, 1.9, '0.32px Sora', stone, 'center');
           pxText(ctx, 'Hit start, then hold your gaze on it until the test ends.', cx, 2.4, '0.32px Sora', stone, 'center');
           pxText(ctx, 'Steady gaze ≈ steady attention. We measure how steady.',  cx, 2.9, '0.32px Sora', stone, 'center');
-          const prompt = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
-          pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
+          const prompt = !hasFace ? 'show your face'
+                       : isBlinking ? 'open your eyes'
+                       : isGazeStable() ? 'ready to start'
+                       : '';
+          const promptColor = isGazeStable() && hasFace && !isBlinking ? sage : charcoal;
+          if (prompt) pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', promptColor, 'center');
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
           // Live gaze preview (rolling window) with all tier rings for context.
           drawScatterPanel(ctx, 0.4, 5.4, 3.4, 3.4);
@@ -634,7 +651,7 @@ export const kasina: Experiment = {
         {
           label: 'start (space)', key: ' ',
           onClick: () => {
-            if (phase === 'ready' && hasFace && !isBlinking) startTest();
+            if (canStart()) startTest();
             else if (phase === 'result') resetToReady();
           },
         },
