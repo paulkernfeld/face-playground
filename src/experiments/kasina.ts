@@ -16,7 +16,7 @@ const BLENDSHAPE_TO_DEG = 20;
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
 // Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
 // (N=358 IR fixation data). Tune empirically with pilot data.
-const CHECKPOINTS_SEC =      [3,   10,  30,  60];
+const CHECKPOINTS_SEC =      [10,  30,  60,  180];
 const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0];
 const TEST_CEILING_SEC = 180;
 
