@@ -48,6 +48,12 @@ const SACCADE_DEG = 2.0;            // samples farther than this from center cou
 const SCATTER_MAX_DEG = 2.5;
 const TIME_SERIES_MAX_DEG2 = 15;
 
+// Nose-tip BCEA is computed in game units, then approximated to camera-FOV deg²
+// using a typical 60° H × 16-game-unit-wide canvas. This is "how much of the
+// camera view the nose swept across", not head rotation in user-perspective deg.
+const NOSE_TIP = 1;
+const GU_TO_CAMERA_DEG = 60 / 16;   // ≈ 3.75° per game unit
+
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
   { label: 'microsaccades & attention', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7962679/' },
@@ -98,6 +104,12 @@ export const kasina: Experiment = {
     let validCount: number;
     let invalidCount: number;    // frames during active phase that didn't yield a sample (blink/no-face)
 
+    // Head-movement baseline. Nose tip is sampled every frame regardless of blink
+    // because head wobble is independent of eye state — it tells you how stable
+    // the body is, which sets a floor for how stable the eyes can be.
+    let noseStats: BceaStats;
+    let noseValidCount: number;
+
     let blinkDuration: number;
     let postBlinkTimer: number;
     let noFaceDuration: number;
@@ -143,6 +155,8 @@ export const kasina: Experiment = {
       sumDev = 0;
       validCount = 0;
       invalidCount = 0;
+      noseStats = createBceaStats();
+      noseValidCount = 0;
     }
 
     function resetToReady() {
@@ -386,13 +400,17 @@ export const kasina: Experiment = {
       const meanDev = validCount > 0 ? sumDev / validCount : 0;
       const validPct = totalFrames > 0 ? (100 * validCount / totalFrames) : 0;
 
+      // Convert nose BCEA from game-units² to camera-FOV deg² (rough comparison
+      // baseline against the eye BCEA — same units, different physical thing).
+      const headBcea = bcea95(noseStats) * GU_TO_CAMERA_DEG * GU_TO_CAMERA_DEG;
       const cells: { label: string; value: string; color?: string }[] = [
         { label: 'sample rate',    value: `${hz.toFixed(1)} Hz`, color: sampleRateColor(hz) },
         { label: '% valid',        value: `${validPct.toFixed(0)}%` },
         { label: 'intrusions',     value: `${saccadeCount}` },
         { label: 'peak error',     value: `${peakDev.toFixed(2)}°` },
         { label: 'mean error',     value: `${meanDev.toFixed(2)}°` },
-        { label: 'BCEA@95%',       value: `${resultBcea.toFixed(2)} deg²` },
+        { label: 'eye BCEA',       value: `${resultBcea.toFixed(2)} deg²` },
+        { label: 'head BCEA',      value: `${headBcea.toFixed(2)} deg²` },
         { label: 'duration',       value: `${elapsed.toFixed(1)}s` },
       ];
 
@@ -495,6 +513,13 @@ export const kasina: Experiment = {
         }
 
         if (phase !== 'active') return;
+
+        // Nose-tip jitter is independent of blink; sample it every frame.
+        const nose = face.landmarks[NOSE_TIP];
+        if (nose) {
+          addSample(noseStats, nose.x, nose.y);
+          noseValidCount++;
+        }
 
         if (isBlinking) {
           blinkDuration += dt;
@@ -649,6 +674,16 @@ export const kasina: Experiment = {
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
+        }
+        // Fake nose-tip drift (tight, in game units) to give the head-BCEA cell a value.
+        for (let i = 0; i < N; i++) {
+          const u1 = ((i * 17 + 3) % 89) / 89 + 0.01;
+          const u2 = ((i * 23 + 5) % 71) / 71 + 0.01;
+          const r = Math.sqrt(-2 * Math.log(u1));
+          const nx = 8 + r * Math.cos(2 * Math.PI * u2) * 0.02;
+          const ny = 4.5 + r * Math.sin(2 * Math.PI * u2) * 0.015;
+          addSample(noseStats, nx, ny);
+          noseValidCount++;
         }
         elapsed = duration;
         resultBcea = bcea95(stats);
