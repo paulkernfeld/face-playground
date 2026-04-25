@@ -7,9 +7,11 @@ import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type
 // One-Minute Focus Test — spec v0.1.
 // Stare at the dot; BCEA@95% of your gaze over the whole test is checked at each checkpoint.
 
-// Placeholder linear conversion from blendshape units to visual-angle degrees.
-// Tune empirically after pilot users.
-const BLENDSHAPE_TO_DEG = 30;
+// Linear conversion from blendshape units to visual-angle degrees.
+// Was 30 (anchored on ARKit "fully looking" ≈ 30°), but real fixation data showed
+// dots landing well outside the threshold rings — i.e. blendshape micro-noise was
+// being amplified. 10 is a coarser empirical fit; tune with more pilot data.
+const BLENDSHAPE_TO_DEG = 10;
 
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
 // Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
