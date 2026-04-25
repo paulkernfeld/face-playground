@@ -1,7 +1,7 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { charcoal, stone, rose, teal, cream, honey, sage, lavender } from '../palette';
+import { charcoal, stone, rose, cream, honey, sage } from '../palette';
 import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type BceaEllipse } from '../bcea';
 
 // One-Minute Focus Test — spec v0.1.
@@ -23,7 +23,7 @@ const TEST_CEILING_SEC = 180;
 type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
 const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked'];
 const TIER_COLORS: Record<Tier, string> = {
-  'Cracked': sage, 'Locked In': teal, 'Normie': honey, 'Scroller': lavender, 'Cooked': rose,
+  'Cracked': sage, 'Locked In': sage, 'Normie': honey, 'Scroller': honey, 'Cooked': rose,
 };
 
 const BLINK_THRESHOLD = 0.2;
