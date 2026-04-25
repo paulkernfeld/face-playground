@@ -156,13 +156,10 @@ export const kasina: Experiment = {
       setLinksVisible(true);
     }
 
-    // The threshold to display on the scatter plot. Represents what the user
-    // would need to beat to reach the next tier (or the Monk ceiling if they
-    // already made it). Drawn as an area-equivalent circle.
-    function scatterThresholdDeg2(): number {
-      const idx = Math.min(checkpointsPassed, TIER_THRESHOLDS_DEG2.length - 1);
-      return TIER_THRESHOLDS_DEG2[idx];
-    }
+    // Each tier threshold is rendered as an area-equivalent circle (r = √(t/π)).
+    // BCEA is variance-based (deg²) and the plot axes are linear deviation (deg),
+    // so this is an approximation — but it lets you eyeball "am I inside Monk?".
+    const RING_TIERS: Tier[] = ['Scroll', 'Scatter', 'Deep Work', 'Monk'];
 
     function drawScatterPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
       // Dark background for "glowing dots" aesthetic (share-worthy contrast).
@@ -177,13 +174,13 @@ export const kasina: Experiment = {
       const centerX = px + pw / 2;
       const centerY = py + headerH + plotBounds / 2;
 
-      // Auto-scale so ellipse + threshold + samples all fit with a small margin.
+      // Auto-scale so ellipse + all tier rings + samples fit with a small margin.
       const ellipse = bcea95Ellipse(stats);
-      const thresholdR = Math.sqrt(scatterThresholdDeg2() / Math.PI);
+      const ringRadii = TIER_THRESHOLDS_DEG2.map(t => Math.sqrt(t / Math.PI));
       const maxRange = Math.max(
         peakDev,
         ellipse ? Math.max(ellipse.a, ellipse.b) : 0,
-        thresholdR,
+        ringRadii[0],
         SACCADE_DEG,
       ) * 1.15;
       const scale = (plotBounds / 2) / maxRange;
@@ -207,13 +204,19 @@ export const kasina: Experiment = {
         ctx.stroke();
       }
 
-      // Tier threshold — area-equivalent circle in contrasting color.
-      ctx.strokeStyle = honey;
-      ctx.lineWidth = 0.04;
-      ctx.setLineDash([0.12, 0.1]);
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, thresholdR * scale, 0, Math.PI * 2);
-      ctx.stroke();
+      // All four tier thresholds — area-equivalent circles, color-coded.
+      ctx.lineWidth = 0.03;
+      ctx.setLineDash([0.1, 0.08]);
+      for (let i = 0; i < ringRadii.length; i++) {
+        const tier = RING_TIERS[i];
+        const r = ringRadii[i] * scale;
+        ctx.strokeStyle = TIER_COLORS[tier];
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Label sits just above the ring on the centerline.
+        pxText(ctx, tier, centerX, centerY - r - 0.06, '0.16px Sora', TIER_COLORS[tier], 'center');
+      }
       ctx.setLineDash([]);
 
       // BCEA@95% ellipse — cream stroke.
