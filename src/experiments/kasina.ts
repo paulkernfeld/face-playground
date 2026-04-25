@@ -90,6 +90,7 @@ export const kasina: Experiment = {
 
     let samples: Sample[];
     let saccadeCount: number;
+    let inIntrusion: boolean;   // edge-trigger: a sustained excursion counts as one intrusion
     let peakDev: number;
     let sumDev: number;
     let validCount: number;
@@ -144,6 +145,7 @@ export const kasina: Experiment = {
       noFaceDuration = 0;
       samples = [];
       saccadeCount = 0;
+      inIntrusion = false;
       peakDev = 0;
       sumDev = 0;
       validCount = 0;
@@ -539,7 +541,11 @@ export const kasina: Experiment = {
           const bceaAt = bcea95(stats);
           samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: bceaAt });
           validCount++;
-          if (dev > SACCADE_DEG) saccadeCount++;
+          if (dev > SACCADE_DEG) {
+            if (!inIntrusion) { saccadeCount++; inIntrusion = true; }
+          } else {
+            inIntrusion = false;
+          }
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
         }
@@ -662,7 +668,11 @@ export const kasina: Experiment = {
           const bceaAt = bcea95(stats);
           samples.push({ t, x, y, dev, bcea: bceaAt });
           validCount++;
-          if (dev > SACCADE_DEG) saccadeCount++;
+          if (dev > SACCADE_DEG) {
+            if (!inIntrusion) { saccadeCount++; inIntrusion = true; }
+          } else {
+            inIntrusion = false;
+          }
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
         }
