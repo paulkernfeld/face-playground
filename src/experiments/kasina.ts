@@ -110,9 +110,12 @@ export const kasina: Experiment = {
     let noseValidCount: number;
 
     // Slow-drifting calibration center (deg). Samples are recorded relative to this,
-    // so a gradual posture shift doesn't show up as a fixation error.
+    // so a gradual posture shift doesn't show up as a fixation error. On the first
+    // valid gaze sample after a phase reset we snap calib to the current gaze, so
+    // the run doesn't open with a spurious "drifting back to center" arc.
     let calibX: number;
     let calibY: number;
+    let needsCalibReset: boolean;
 
     let blinkDuration: number;
     let postBlinkTimer: number;
@@ -163,11 +166,19 @@ export const kasina: Experiment = {
       noseValidCount = 0;
       calibX = 0;
       calibY = 0;
+      needsCalibReset = true;
     }
 
     // Move the calibration point a fixed angular speed toward the latest gaze
     // direction. Returns the gaze position relative to the (post-update) center.
+    // On the first call after a phase reset, snap directly to the current gaze.
     function applyCalibration(gx: number, gy: number, dt: number): [number, number] {
+      if (needsCalibReset) {
+        calibX = gx;
+        calibY = gy;
+        needsCalibReset = false;
+        return [0, 0];
+      }
       const dx = gx - calibX;
       const dy = gy - calibY;
       const dist = Math.hypot(dx, dy);
