@@ -7,9 +7,11 @@ import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type
 // One-Minute Focus Test — spec v0.1.
 // Stare at the dot; BCEA@95% of your gaze over the whole test is checked at each checkpoint.
 
-// Placeholder linear conversion from blendshape units to visual-angle degrees.
-// Tune empirically after pilot users.
-const BLENDSHAPE_TO_DEG = 30;
+// Linear conversion from blendshape units to visual-angle degrees.
+// Was 30 (anchored on ARKit "fully looking" ≈ 30°), but real fixation data showed
+// dots landing well outside the threshold rings — i.e. blendshape micro-noise was
+// being amplified. 10 is a coarser empirical fit; tune with more pilot data.
+const BLENDSHAPE_TO_DEG = 10;
 
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
 // Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
@@ -22,13 +24,6 @@ const TEST_CEILING_SEC = 180;
 
 type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
 const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked'];
-const ROASTS: Record<Tier, string> = {
-  'Cracked':     "You held still for a minute. Most modern brains can't. What are you doing with your life.",
-  'Locked In':   "Top-shelf focus. You probably get things done.",
-  'Normie': "A functional modern brain. Congratulations?",
-  'Scroller':    "Your attention is in feed-mode. You are most of us.",
-  'Cooked':      "lol",
-};
 const TIER_COLORS: Record<Tier, string> = {
   'Cracked': sage, 'Locked In': teal, 'Normie': honey, 'Scroller': lavender, 'Cooked': rose,
 };
@@ -38,7 +33,25 @@ const MAX_BLINK_SEC = 2.0;
 const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the lid reopens
 const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on the ready screen
 const MAX_NO_FACE_SEC = 1.5;
-const SACCADE_DEG = 2.0;   // samples farther than this from center count as saccadic intrusions
+const SACCADE_DEG = 2.0;            // samples farther than this from center count as saccadic intrusions
+
+// Plot ranges are fixed (no auto-zoom) so "your trace crossed the line = you lose"
+// is a clean visual semantic. SCATTER_MAX_DEG is set so the largest tier ring sits
+// inside the panel; TIME_SERIES_MAX_DEG2 is set so the easiest threshold is mid-plot.
+const SCATTER_MAX_DEG = 2.5;
+const TIME_SERIES_MAX_DEG2 = 15;
+
+// Nose-tip BCEA is computed in game units, then approximated to camera-FOV deg²
+// using a typical 60° H × 16-game-unit-wide canvas. This is "how much of the
+// camera view the nose swept across", not head rotation in user-perspective deg.
+const NOSE_TIP = 1;
+const GU_TO_CAMERA_DEG = 60 / 16;   // ≈ 3.75° per game unit
+
+// Slow-drift calibration point. The "center" the user is fixating on is allowed to
+// creep at this rate (deg/s) toward where their eyes are actually pointing — so a
+// gradual posture shift doesn't accumulate as BCEA. Fast saccades still register
+// because the calibration can't keep up. Reset at the start of ready and active.
+const CALIBRATION_DRIFT_DEG_PER_SEC = 3;
 
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
@@ -53,6 +66,7 @@ interface Sample {
   x: number;         // degrees (screen x, + = right)
   y: number;         // degrees (screen y, + = down)
   dev: number;       // √(x² + y²) — angular deviation from target center
+  bcea: number;      // cumulative BCEA@95% over all samples up to and including this one (deg²)
 }
 
 function extractGazeDeg(bs: Blendshapes): [number, number] {
@@ -88,6 +102,17 @@ export const kasina: Experiment = {
     let sumDev: number;
     let validCount: number;
     let invalidCount: number;    // frames during active phase that didn't yield a sample (blink/no-face)
+
+    // Head-movement baseline. Nose tip is sampled every frame regardless of blink
+    // because head wobble is independent of eye state — it tells you how stable
+    // the body is, which sets a floor for how stable the eyes can be.
+    let noseStats: BceaStats;
+    let noseValidCount: number;
+
+    // Slow-drifting calibration center (deg). Samples are recorded relative to this,
+    // so a gradual posture shift doesn't show up as a fixation error.
+    let calibX: number;
+    let calibY: number;
 
     let blinkDuration: number;
     let postBlinkTimer: number;
@@ -134,6 +159,24 @@ export const kasina: Experiment = {
       sumDev = 0;
       validCount = 0;
       invalidCount = 0;
+      noseStats = createBceaStats();
+      noseValidCount = 0;
+      calibX = 0;
+      calibY = 0;
+    }
+
+    // Move the calibration point a fixed angular speed toward the latest gaze
+    // direction. Returns the gaze position relative to the (post-update) center.
+    function applyCalibration(gx: number, gy: number, dt: number): [number, number] {
+      const dx = gx - calibX;
+      const dy = gy - calibY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        const step = Math.min(CALIBRATION_DRIFT_DEG_PER_SEC * dt, dist);
+        calibX += (dx / dist) * step;
+        calibY += (dy / dist) * step;
+      }
+      return [gx - calibX, gy - calibY];
     }
 
     function resetToReady() {
@@ -175,16 +218,11 @@ export const kasina: Experiment = {
       const centerX = px + pw / 2;
       const centerY = py + headerH + plotBounds / 2;
 
-      // Auto-scale so ellipse + all tier rings + samples fit with a small margin.
+      // Fixed visual-angle scale — never auto-zoom. Samples outside SCATTER_MAX_DEG
+      // are simply clipped, which makes "your dot left the panel" a meaningful signal.
       const ellipse = bcea95Ellipse(stats);
       const ringRadii = TIER_THRESHOLDS_DEG2.map(t => Math.sqrt(t / Math.PI));
-      const maxRange = Math.max(
-        peakDev,
-        ellipse ? Math.max(ellipse.a, ellipse.b) : 0,
-        ringRadii[0],
-        SACCADE_DEG,
-      ) * 1.15;
-      const scale = (plotBounds / 2) / maxRange;
+      const scale = (plotBounds / 2) / SCATTER_MAX_DEG;
 
       // Faint axes through origin.
       ctx.strokeStyle = '#2e2c28';
@@ -233,13 +271,14 @@ export const kasina: Experiment = {
         ctx.restore();
       }
 
-      // Sample dots: color by time (early faint → late bright); saccadic intrusions in rose.
+      // Sample dots — small, semi-transparent, single color. Time encoded as alpha
+      // (early dim, late brighter) so you can read the recency of the cluster.
       const totalT = samples.length ? samples[samples.length - 1].t : 1;
-      const dotR = 0.05;
+      const dotR = 0.025;
+      ctx.fillStyle = cream;
       for (const s of samples) {
-        const alpha = 0.2 + 0.8 * (s.t / Math.max(totalT, 0.001));
+        const alpha = 0.15 + 0.35 * (s.t / Math.max(totalT, 0.001));
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = s.dev > SACCADE_DEG ? rose : cream;
         ctx.beginPath();
         ctx.arc(centerX + s.x * scale, centerY + s.y * scale, dotR, 0, Math.PI * 2);
         ctx.fill();
@@ -266,9 +305,6 @@ export const kasina: Experiment = {
       pxText(ctx, 'one-minute focus test', px + pw / 2, py + ph - 0.15, '0.2px Sora', stone, 'center');
     }
 
-    // Horizontal threshold lines are drawn at the area-equivalent radius of each
-    // BCEA threshold — an approximate but visually useful translation from deg²
-    // variance into deg of deviation.
     const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
 
     function drawTimeSeriesPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
@@ -282,28 +318,41 @@ export const kasina: Experiment = {
       const plotW = pw - leftPad - rightPad;
       const plotH = ph - topPad - bottomPad;
 
-      const maxThresholdR = Math.sqrt(TIER_THRESHOLDS_DEG2[0] / Math.PI);
-      const yMax = Math.max(peakDev, maxThresholdR, 2.5) * 1.1;
+      const yMax = TIME_SERIES_MAX_DEG2;
       const xMax = TEST_CEILING_SEC;
-
       const tx = (t: number) => plotX0 + (t / xMax) * plotW;
-      const ty = (d: number) => plotY0 + plotH - (d / yMax) * plotH;
+      const ty = (v: number) => plotY0 + plotH - (Math.min(v, yMax) / yMax) * plotH;
 
-      pxText(ctx, 'deviation over time', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
+      pxText(ctx, 'BCEA over time — stay under the ceiling', px + 0.1, py + 0.3, '0.22px Sora', stone, 'left');
 
-      // Horizontal threshold lines (area-equivalent radii).
-      ctx.strokeStyle = lavender;
-      ctx.lineWidth = 0.018;
-      ctx.setLineDash([0.08, 0.08]);
-      for (const t of TIER_THRESHOLDS_DEG2) {
-        const r = Math.sqrt(t / Math.PI);
-        if (r > yMax) continue;
+      // Stair-step "fail ceiling" — at each checkpoint the threshold ratchets down.
+      // If your trace ever crosses above the step at time t, you fail at the next
+      // checkpoint. Each segment is colored by the tier you're trying to clear.
+      ctx.lineWidth = 0.04;
+      const ceilingSegments: { t0: number; t1: number; threshold: number; tier: Tier }[] = [];
+      for (let i = 0; i < CHECKPOINTS_SEC.length; i++) {
+        const t0 = i === 0 ? 0 : CHECKPOINTS_SEC[i - 1];
+        ceilingSegments.push({
+          t0,
+          t1: CHECKPOINTS_SEC[i],
+          threshold: TIER_THRESHOLDS_DEG2[i],
+          tier: RING_TIERS[i],
+        });
+      }
+      // Trailing flat segment after final checkpoint stays at the toughest threshold.
+      ceilingSegments.push({
+        t0: CHECKPOINTS_SEC[CHECKPOINTS_SEC.length - 1],
+        t1: TEST_CEILING_SEC,
+        threshold: TIER_THRESHOLDS_DEG2[TIER_THRESHOLDS_DEG2.length - 1],
+        tier: RING_TIERS[RING_TIERS.length - 1],
+      });
+      for (const seg of ceilingSegments) {
+        ctx.strokeStyle = TIER_COLORS[seg.tier];
         ctx.beginPath();
-        ctx.moveTo(plotX0, ty(r));
-        ctx.lineTo(plotX0 + plotW, ty(r));
+        ctx.moveTo(tx(seg.t0), ty(seg.threshold));
+        ctx.lineTo(tx(seg.t1), ty(seg.threshold));
         ctx.stroke();
       }
-      ctx.setLineDash([]);
 
       // Vertical checkpoint markers.
       ctx.strokeStyle = stone;
@@ -319,14 +368,14 @@ export const kasina: Experiment = {
       }
       ctx.setLineDash([]);
 
-      // Trace.
+      // Running BCEA trace.
       ctx.strokeStyle = charcoal;
       ctx.lineWidth = 0.03;
       ctx.beginPath();
       let started = false;
       for (const s of samples) {
         const x = tx(s.t);
-        const y = ty(Math.min(s.dev, yMax));
+        const y = ty(s.bcea);
         if (!started) { ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
       }
@@ -341,10 +390,10 @@ export const kasina: Experiment = {
       ctx.lineTo(plotX0 + plotW, plotY0 + plotH);
       ctx.stroke();
 
-      pxText(ctx, `${yMax.toFixed(1)}°`, plotX0 - 0.08, plotY0 + 0.18, '0.2px Sora', stone, 'right');
-      pxText(ctx, '0°',                   plotX0 - 0.08, plotY0 + plotH - 0.02, '0.2px Sora', stone, 'right');
-      pxText(ctx, '0s',                   plotX0,                 plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
-      pxText(ctx, `${TEST_CEILING_SEC}s`, plotX0 + plotW,         plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+      pxText(ctx, `${yMax.toFixed(0)} deg²`, plotX0 - 0.08, plotY0 + 0.18, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0',                        plotX0 - 0.08, plotY0 + plotH - 0.02, '0.2px Sora', stone, 'right');
+      pxText(ctx, '0s',                       plotX0,                 plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
+      pxText(ctx, `${TEST_CEILING_SEC}s`,     plotX0 + plotW,         plotY0 + plotH + 0.3, '0.2px Sora', stone, 'center');
 
       ctx.restore();
     }
@@ -371,13 +420,17 @@ export const kasina: Experiment = {
       const meanDev = validCount > 0 ? sumDev / validCount : 0;
       const validPct = totalFrames > 0 ? (100 * validCount / totalFrames) : 0;
 
+      // Convert nose BCEA from game-units² to camera-FOV deg² (rough comparison
+      // baseline against the eye BCEA — same units, different physical thing).
+      const headBcea = bcea95(noseStats) * GU_TO_CAMERA_DEG * GU_TO_CAMERA_DEG;
       const cells: { label: string; value: string; color?: string }[] = [
         { label: 'sample rate',    value: `${hz.toFixed(1)} Hz`, color: sampleRateColor(hz) },
         { label: '% valid',        value: `${validPct.toFixed(0)}%` },
         { label: 'intrusions',     value: `${saccadeCount}` },
         { label: 'peak error',     value: `${peakDev.toFixed(2)}°` },
         { label: 'mean error',     value: `${meanDev.toFixed(2)}°` },
-        { label: 'BCEA@95%',       value: `${resultBcea.toFixed(2)} deg²` },
+        { label: 'eye BCEA',       value: `${resultBcea.toFixed(2)} deg²` },
+        { label: 'head BCEA',      value: `${headBcea.toFixed(2)} deg²` },
         { label: 'duration',       value: `${elapsed.toFixed(1)}s` },
       ];
 
@@ -462,10 +515,11 @@ export const kasina: Experiment = {
           } else if (postBlinkTimer > 0) {
             postBlinkTimer -= dt;
           } else {
-            const [gx, gy] = extractGazeDeg(face.blendshapes);
+            const [rawX, rawY] = extractGazeDeg(face.blendshapes);
+            const [gx, gy] = applyCalibration(rawX, rawY, dt);
             const dev = Math.hypot(gx, gy);
             elapsed += dt;
-            samples.push({ t: elapsed, x: gx, y: gy, dev });
+            samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: 0 });
             const cutoff = elapsed - PREVIEW_WINDOW_SEC;
             while (samples.length && samples[0].t < cutoff) samples.shift();
             // Recompute stats and peakDev from the windowed samples.
@@ -481,6 +535,13 @@ export const kasina: Experiment = {
 
         if (phase !== 'active') return;
 
+        // Nose-tip jitter is independent of blink; sample it every frame.
+        const nose = face.landmarks[NOSE_TIP];
+        if (nose) {
+          addSample(noseStats, nose.x, nose.y);
+          noseValidCount++;
+        }
+
         if (isBlinking) {
           blinkDuration += dt;
           postBlinkTimer = POST_BLINK_GRACE_SEC;
@@ -493,10 +554,12 @@ export const kasina: Experiment = {
           invalidCount++;
         } else {
           blinkDuration = 0;
-          const [gx, gy] = extractGazeDeg(face.blendshapes);
+          const [rawX, rawY] = extractGazeDeg(face.blendshapes);
+          const [gx, gy] = applyCalibration(rawX, rawY, dt);
           addSample(stats, gx, gy);
           const dev = Math.hypot(gx, gy);
-          samples.push({ t: elapsed, x: gx, y: gy, dev });
+          const bceaAt = bcea95(stats);
+          samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: bceaAt });
           validCount++;
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
@@ -544,9 +607,10 @@ export const kasina: Experiment = {
         }
 
         if (phase === 'ready') {
-          pxText(ctx, 'One-Minute Focus Test', cx, 1.4, '0.7px Fredoka', charcoal, 'center');
-          pxText(ctx, 'How long can you actually hold still?', cx, 2.3, '0.45px Fredoka', stone, 'center');
-          pxText(ctx, 'Most people fail in under 30 seconds.', cx, 3.0, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'One-Minute Focus Test', cx, 1.0, '0.7px Fredoka', charcoal, 'center');
+          pxText(ctx, 'Pick something to look at — the dot, anything.', cx, 1.9, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'Hit start, then hold your gaze on it until the test ends.', cx, 2.4, '0.32px Sora', stone, 'center');
+          pxText(ctx, 'Steady gaze ≈ steady attention. We measure how steady.',  cx, 2.9, '0.32px Sora', stone, 'center');
           const prompt = !hasFace ? 'show your face' : isBlinking ? 'open your eyes' : 'press space to start';
           pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', charcoal, 'center');
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
@@ -567,14 +631,7 @@ export const kasina: Experiment = {
         } else if (phase === 'result' && resultTier) {
           const tierColor = TIER_COLORS[resultTier];
 
-          // Header: tier + roast
-          pxText(ctx, resultTier, cx, 0.95, '1.1px Fredoka', tierColor, 'center');
-          const lines = wrap(ROASTS[resultTier], 60);
-          let y = 1.75;
-          for (const line of lines) {
-            pxText(ctx, line, cx, y, '0.32px Sora', charcoal, 'center');
-            y += 0.45;
-          }
+          pxText(ctx, resultTier, cx, 1.4, '1.4px Fredoka', tierColor, 'center');
 
           // Scatter panel (hero / shareable artifact) — square, left-centered.
           drawScatterPanel(ctx, 0.5, 2.5, 6.5, 6.0);
@@ -611,6 +668,7 @@ export const kasina: Experiment = {
         const N = 180;
         const duration = 60;
         // Box-Muller-ish deterministic noise for reproducible preview.
+        const eyePoints: { t: number; x: number; y: number }[] = [];
         for (let i = 0; i < N; i++) {
           const t = (i / N) * duration;
           const u1 = ((i * 13 + 7) % 97) / 97 + 0.01;
@@ -618,26 +676,31 @@ export const kasina: Experiment = {
           const r = Math.sqrt(-2 * Math.log(u1));
           const x = r * Math.cos(2 * Math.PI * u2) * 0.35;
           const y = r * Math.sin(2 * Math.PI * u2) * 0.35;
+          eyePoints.push({ t, x, y });
+        }
+        eyePoints.push({ t: 20, x: 2.3, y: -0.8 });
+        eyePoints.push({ t: 47, x: -1.6, y: 2.1 });
+        eyePoints.sort((a, b) => a.t - b.t);
+        for (const { t, x, y } of eyePoints) {
           addSample(stats, x, y);
           const dev = Math.hypot(x, y);
-          samples.push({ t, x, y, dev });
+          const bceaAt = bcea95(stats);
+          samples.push({ t, x, y, dev, bcea: bceaAt });
           validCount++;
           if (dev > SACCADE_DEG) saccadeCount++;
           if (dev > peakDev) peakDev = dev;
           sumDev += dev;
         }
-        // Throw in a couple of intrusions for visible red dots.
-        const intrusions: [number, number, number][] = [[20, 2.3, -0.8], [47, -1.6, 2.1]];
-        for (const [t, x, y] of intrusions) {
-          addSample(stats, x, y);
-          const dev = Math.hypot(x, y);
-          samples.push({ t, x, y, dev });
-          validCount++;
-          if (dev > SACCADE_DEG) saccadeCount++;
-          if (dev > peakDev) peakDev = dev;
-          sumDev += dev;
+        // Fake nose-tip drift (tight, in game units) to give the head-BCEA cell a value.
+        for (let i = 0; i < N; i++) {
+          const u1 = ((i * 17 + 3) % 89) / 89 + 0.01;
+          const u2 = ((i * 23 + 5) % 71) / 71 + 0.01;
+          const r = Math.sqrt(-2 * Math.log(u1));
+          const nx = 8 + r * Math.cos(2 * Math.PI * u2) * 0.02;
+          const ny = 4.5 + r * Math.sin(2 * Math.PI * u2) * 0.015;
+          addSample(noseStats, nx, ny);
+          noseValidCount++;
         }
-        samples.sort((a, b) => a.t - b.t);
         elapsed = duration;
         resultBcea = bcea95(stats);
       },
@@ -656,19 +719,3 @@ export const kasina: Experiment = {
     };
   })(),
 };
-
-function wrap(text: string, maxChars: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let cur = '';
-  for (const w of words) {
-    if ((cur + ' ' + w).trim().length > maxChars && cur) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = cur ? cur + ' ' + w : w;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
