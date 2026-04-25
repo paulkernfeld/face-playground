@@ -40,7 +40,13 @@ const MAX_BLINK_SEC = 2.0;
 const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the lid reopens
 const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on the ready screen
 const MAX_NO_FACE_SEC = 1.5;
-const SACCADE_DEG = 2.0;   // samples farther than this from center count as saccadic intrusions
+const SACCADE_DEG = 2.0;            // samples farther than this from center count as saccadic intrusions
+
+// Plot ranges are fixed (no auto-zoom) so "your trace crossed the line = you lose"
+// is a clean visual semantic. SCATTER_MAX_DEG is set so the largest tier ring sits
+// inside the panel; TIME_SERIES_MAX_DEG2 is set so the easiest threshold is mid-plot.
+const SCATTER_MAX_DEG = 2.5;
+const TIME_SERIES_MAX_DEG2 = 15;
 
 const PAPER_LINKS = [
   { label: 'BCEA — Kim 2022', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9112722/' },
@@ -177,16 +183,11 @@ export const kasina: Experiment = {
       const centerX = px + pw / 2;
       const centerY = py + headerH + plotBounds / 2;
 
-      // Auto-scale so ellipse + all tier rings + samples fit with a small margin.
+      // Fixed visual-angle scale — never auto-zoom. Samples outside SCATTER_MAX_DEG
+      // are simply clipped, which makes "your dot left the panel" a meaningful signal.
       const ellipse = bcea95Ellipse(stats);
       const ringRadii = TIER_THRESHOLDS_DEG2.map(t => Math.sqrt(t / Math.PI));
-      const maxRange = Math.max(
-        peakDev,
-        ellipse ? Math.max(ellipse.a, ellipse.b) : 0,
-        ringRadii[0],
-        SACCADE_DEG,
-      ) * 1.15;
-      const scale = (plotBounds / 2) / maxRange;
+      const scale = (plotBounds / 2) / SCATTER_MAX_DEG;
 
       // Faint axes through origin.
       ctx.strokeStyle = '#2e2c28';
@@ -235,13 +236,14 @@ export const kasina: Experiment = {
         ctx.restore();
       }
 
-      // Sample dots: color by time (early faint → late bright); saccadic intrusions in rose.
+      // Sample dots — small, semi-transparent, single color. Time encoded as alpha
+      // (early dim, late brighter) so you can read the recency of the cluster.
       const totalT = samples.length ? samples[samples.length - 1].t : 1;
-      const dotR = 0.05;
+      const dotR = 0.025;
+      ctx.fillStyle = cream;
       for (const s of samples) {
-        const alpha = 0.2 + 0.8 * (s.t / Math.max(totalT, 0.001));
+        const alpha = 0.15 + 0.35 * (s.t / Math.max(totalT, 0.001));
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = s.dev > SACCADE_DEG ? rose : cream;
         ctx.beginPath();
         ctx.arc(centerX + s.x * scale, centerY + s.y * scale, dotR, 0, Math.PI * 2);
         ctx.fill();
