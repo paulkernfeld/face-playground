@@ -12,15 +12,12 @@ import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats, type
 const BLENDSHAPE_TO_DEG = 30;
 
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
-// Thresholds from quintile calibration against Longhin et al. 2016 MAIA normative
-// data (N=358), fitted as log-normal: mean=2.40 deg², SD=2.04, μ≈0.60, σ≈0.74.
-// Each cutoff is the inverse-CDF at the population quintile for that tier.
-// Caveats: duration-invariance is a first-order approximation; webcam is ~6×
-// noisier than MAIA IR tracking, so real-hardware thresholds will likely need
-// a multiplicative scale once pilot data arrives. Centralized here so retuning
-// is a one-line change.
+// Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
+// (N=358 IR fixation data). Webcam blendshape gaze is ~3–6× noisier than IR, so
+// these are the baseline scaled by NOISE_SCALE. Tune empirically with pilot data.
+const NOISE_SCALE = 3;
 const CHECKPOINTS_SEC =      [3,   10,  30,  60];
-const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0];
+const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0].map(t => t * NOISE_SCALE);
 const TEST_CEILING_SEC = 180;
 
 type Tier = 'Cooked' | 'Scroll' | 'Scatter' | 'Deep Work' | 'Monk';
