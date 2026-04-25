@@ -32,7 +32,7 @@ const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the li
 const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on the ready screen
 const MAX_NO_FACE_SEC = 1.5;
 const SACCADE_DEG = 2.0;            // samples farther than this from center count as saccadic intrusions
-const START_GATE_DEG = 1.0;         // ready→active is blocked until current gaze sits within this of the calibration point
+const START_GATE_DEG = 0.67;        // ready→active is blocked until current gaze sits within this of the calibration point
 
 // Plot ranges are fixed (no auto-zoom) so "your trace crossed the line = you lose"
 // is a clean visual semantic. SCATTER_MAX_DEG is set so the largest tier ring sits
