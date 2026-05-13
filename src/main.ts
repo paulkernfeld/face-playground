@@ -99,6 +99,14 @@ btnBar.innerHTML = `
 `;
 document.body.appendChild(btnBar);
 
+// Kiosk mode: deep-link entries (?exp, ?demo) hide the back button and disable
+// the 'q' shortcut so demo attendees can't accidentally exit.
+const isKiosk = new URLSearchParams(window.location.search).has("exp")
+             || new URLSearchParams(window.location.search).has("demo");
+if (isKiosk) {
+  document.getElementById("btn-back")!.classList.add("hidden");
+}
+
 document.getElementById("btn-back")!.addEventListener("click", () => {
   if (currentExp) showMenu();
 });
@@ -500,7 +508,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   // q: back to menu
-  if (e.key === "q" && currentExp) {
+  if (e.key === "q" && currentExp && !isKiosk) {
     showMenu();
     return;
   }

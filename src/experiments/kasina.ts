@@ -1,7 +1,7 @@
 import type { Experiment, FaceData, Blendshapes } from "../types";
 import { GameRoughCanvas } from '../rough-scale';
 import { pxText } from '../px-text';
-import { charcoal, stone, rose, cream, honey, sage } from '../palette';
+import { charcoal, stone, rose, cream, honey, sage, terra, sky, lavender } from '../palette';
 import { createBceaStats, addSample, bcea95, bcea95Ellipse, type BceaStats } from '../bcea';
 
 // One-Minute Focus Test — spec v0.1.
@@ -26,6 +26,10 @@ const TIER_COLORS: Record<Tier, string> = {
   'Cracked': sage, 'Locked In': sage, 'Normie': honey, 'Scroller': honey, 'Cooked': rose,
 };
 
+// Central fixation dot color during the active phase — climbs as checkpoints pass.
+// Cream wouldn't read against the warm cream canvas bg, so top tiers use sky/lavender.
+const ACTIVE_DOT_COLORS = [rose, terra, honey, sky, lavender];
+
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_SEC = 2.0;
 const POST_BLINK_GRACE_SEC = 0.4;   // gaze blendshapes are unreliable as the lid reopens
@@ -33,6 +37,12 @@ const PREVIEW_WINDOW_SEC = 4;       // rolling window of recent samples shown on
 const MAX_NO_FACE_SEC = 1.5;
 const SACCADE_DEG = 2.0;            // samples farther than this from center count as saccadic intrusions
 const START_GATE_DEG = 0.67;        // ready→active is blocked until current gaze sits within this of the calibration point
+
+// Contextual ready-screen prompts use a rolling window so they don't strobe on a single bad frame.
+const PROMPT_WINDOW_SEC = 1.5;
+const FACE_SIZE_MIN = 1.2;          // interocular distance in game units (16-wide) — below this, "please have a seat".
+const HEAD_MOVE_THRESHOLD = 2.5;    // bounding-box diagonal of head translation over PROMPT_WINDOW_SEC (cm-ish) — above this, "remain still"
+const GAZE_PEAK_DEG_LIMIT = 1.0;    // peak deviation in 4s gaze window — above this, "hold your gaze on a point"
 
 // Plot ranges are fixed (no auto-zoom) so "your trace crossed the line = you lose"
 // is a clean visual semantic. SCATTER_MAX_DEG is set so the largest tier ring sits
@@ -60,6 +70,16 @@ interface Sample {
   y: number;         // degrees (screen y, + = down)
   dev: number;       // √(x² + y²) — angular deviation from target center
   bcea: number;      // cumulative BCEA@95% over all samples up to and including this one (deg²)
+}
+
+// Rolling per-frame snapshot of face presence/size/translation. Used during the
+// ready phase to compute the contextual prompt (sit down / remain still / etc).
+interface FaceSnap {
+  t: number;
+  hasFace: boolean;
+  size: number;        // interocular distance (0 if no face)
+  hasMatrix: boolean;
+  tx: number; ty: number; tz: number;
 }
 
 function extractGazeDeg(bs: Blendshapes): [number, number] {
@@ -90,6 +110,7 @@ export const kasina: Experiment = {
     let rc: GameRoughCanvas;
 
     let samples: Sample[];
+    let faceBuffer: FaceSnap[]; // rolling PROMPT_WINDOW_SEC of frames for the contextual ready-screen prompt
     let saccadeCount: number;
     let inIntrusion: boolean;   // edge-trigger: a sustained excursion counts as one intrusion
     let peakDev: number;
@@ -109,6 +130,7 @@ export const kasina: Experiment = {
     let postBlinkTimer: number;
     let noFaceDuration: number;
     let isBlinking: boolean;
+    let latestBlinkMax: number; // max(eyeBlinkLeft, eyeBlinkRight) — for the openEyes progress ring
     let hasFace: boolean;
 
     let audioCtx: AudioContext | null = null;
@@ -143,8 +165,10 @@ export const kasina: Experiment = {
       checkpointsPassed = 0;
       blinkDuration = 0;
       postBlinkTimer = 0;
+      latestBlinkMax = 0;
       noFaceDuration = 0;
       samples = [];
+      faceBuffer = [];
       saccadeCount = 0;
       inIntrusion = false;
       peakDev = 0;
@@ -185,16 +209,128 @@ export const kasina: Experiment = {
       setLinksVisible(false);
     }
 
-    // Gaze-stability gate for ready→active. The calibration center drifts toward
-    // the user's gaze at CALIBRATION_DRIFT_DEG_PER_SEC, so "hold still for ~1s"
-    // is enough to clear this — but actively looking around won't.
-    function isGazeStable(): boolean {
+    // Interocular distance as a face-size proxy. Bigger = face closer to camera.
+    function computeFaceSize(landmarks: { x: number; y: number; z: number }[]): number {
+      if (landmarks.length < 264) return 0;
+      const a = landmarks[33];
+      const b = landmarks[263];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    // Face is present + close enough for ≥60% of the recent window.
+    function isFaceComfortable(): boolean {
+      if (faceBuffer.length === 0) return false;
+      let good = 0;
+      for (const f of faceBuffer) {
+        if (f.hasFace && f.size >= FACE_SIZE_MIN) good++;
+      }
+      return good / faceBuffer.length >= 0.6;
+    }
+
+    // Bounding-box diagonal of head translation over the window. Doesn't fire
+    // until matrix data has been flowing for a moment — avoids spurious "remain
+    // still" on the first valid frame.
+    function isHeadStill(): boolean {
+      let minTx = Infinity, maxTx = -Infinity;
+      let minTy = Infinity, maxTy = -Infinity;
+      let minTz = Infinity, maxTz = -Infinity;
+      let n = 0;
+      for (const f of faceBuffer) {
+        if (!f.hasMatrix) continue;
+        if (f.tx < minTx) minTx = f.tx;
+        if (f.tx > maxTx) maxTx = f.tx;
+        if (f.ty < minTy) minTy = f.ty;
+        if (f.ty > maxTy) maxTy = f.ty;
+        if (f.tz < minTz) minTz = f.tz;
+        if (f.tz > maxTz) maxTz = f.tz;
+        n++;
+      }
+      if (n < 5) return true;
+      const diag = Math.hypot(maxTx - minTx, maxTy - minTy, maxTz - minTz);
+      return diag < HEAD_MOVE_THRESHOLD;
+    }
+
+    // Gaze is steady when both the latest sample is inside the gate AND no
+    // sample in the 4s preview window strayed past GAZE_PEAK_DEG_LIMIT.
+    function isGazeSteady(): boolean {
       if (samples.length === 0) return false;
-      return samples[samples.length - 1].dev < START_GATE_DEG;
+      const last = samples[samples.length - 1];
+      if (last.dev >= START_GATE_DEG) return false;
+      for (const s of samples) {
+        if (s.dev > GAZE_PEAK_DEG_LIMIT) return false;
+      }
+      return true;
+    }
+
+    type Prompt = 'waitingForUser' | 'sitDown' | 'openEyes' | 'remainStill' | 'holdGaze' | 'pressSpace';
+
+    // True when ≥60% of the recent window has any face at all (regardless of size).
+    function hasAnyFace(): boolean {
+      if (faceBuffer.length === 0) return false;
+      let n = 0;
+      for (const f of faceBuffer) if (f.hasFace) n++;
+      return n / faceBuffer.length >= 0.6;
+    }
+
+    function currentPrompt(): Prompt {
+      if (!hasAnyFace()) return 'waitingForUser';
+      if (!isFaceComfortable()) return 'sitDown';
+      if (isBlinking) return 'openEyes';
+      if (!isHeadStill()) return 'remainStill';
+      if (!isGazeSteady()) return 'holdGaze';
+      return 'pressSpace';
     }
 
     function canStart(): boolean {
-      return phase === 'ready' && hasFace && !isBlinking && isGazeStable();
+      return phase === 'ready' && currentPrompt() === 'pressSpace';
+    }
+
+    // Progress (0..1) toward clearing the currently-gating ready-screen condition.
+    // Used to fill a ring around the central dot — gives smooth feedback even
+    // though the prompt itself switches discretely.
+    function readyProgress(): number {
+      const p = currentPrompt();
+      if (p === 'pressSpace') return 1;
+      if (p === 'waitingForUser') return 0;
+      if (p === 'openEyes') {
+        // As max(blinkL, blinkR) drops from 1 (fully closed) to BLINK_THRESHOLD (gate clears), ring fills 0→1.
+        return Math.max(0, Math.min(1, (1 - latestBlinkMax) / (1 - BLINK_THRESHOLD)));
+      }
+      if (p === 'sitDown') {
+        const latest = faceBuffer[faceBuffer.length - 1];
+        if (!latest || !latest.hasFace) return 0;
+        return Math.min(latest.size / FACE_SIZE_MIN, 1);
+      }
+      if (p === 'remainStill') {
+        let minTx = Infinity, maxTx = -Infinity, minTy = Infinity, maxTy = -Infinity, minTz = Infinity, maxTz = -Infinity;
+        let n = 0;
+        for (const f of faceBuffer) {
+          if (!f.hasMatrix) continue;
+          if (f.tx < minTx) minTx = f.tx; if (f.tx > maxTx) maxTx = f.tx;
+          if (f.ty < minTy) minTy = f.ty; if (f.ty > maxTy) maxTy = f.ty;
+          if (f.tz < minTz) minTz = f.tz; if (f.tz > maxTz) maxTz = f.tz;
+          n++;
+        }
+        if (n < 5) return 0;
+        const diag = Math.hypot(maxTx - minTx, maxTy - minTy, maxTz - minTz);
+        // Map across 2x the gate threshold so the bar is dynamic even during active movement.
+        // diag=0 → 1 (still), diag=THRESHOLD → 0.5 (boundary), diag>=2*THRESHOLD → 0.
+        return Math.max(0, 1 - diag / (2 * HEAD_MOVE_THRESHOLD));
+      }
+      // holdGaze — same softening as remainStill so the bar is dynamic during gaze excursions.
+      if (samples.length === 0) return 0;
+      const last = samples[samples.length - 1];
+      return Math.max(0, 1 - last.dev / (2 * GAZE_PEAK_DEG_LIMIT));
+    }
+
+    // Active-phase ring: fraction of time elapsed within the current checkpoint
+    // segment. Resets to 0 at each checkpoint clear (when checkpointsPassed bumps).
+    function activeProgress(): number {
+      const idx = checkpointsPassed;
+      if (idx >= CHECKPOINTS_SEC.length) return 1;
+      const segStart = idx === 0 ? 0 : CHECKPOINTS_SEC[idx - 1];
+      const segEnd = CHECKPOINTS_SEC[idx];
+      return Math.max(0, Math.min(1, (elapsed - segStart) / (segEnd - segStart)));
     }
 
     function startTest() {
@@ -490,26 +626,49 @@ export const kasina: Experiment = {
       },
 
       update(face: FaceData | null, dt: number) {
+        hasFace = !!face;
         if (!face) {
-          hasFace = false;
           isBlinking = false;
           if (phase === 'active') {
             noFaceDuration += dt;
             invalidCount++;
             if (noFaceDuration > MAX_NO_FACE_SEC) endTest();
+            return;
+          }
+          if (phase === 'ready') {
+            elapsed += dt;
+            faceBuffer.push({ t: elapsed, hasFace: false, size: 0, hasMatrix: false, tx: 0, ty: 0, tz: 0 });
+            const cutoff = elapsed - PROMPT_WINDOW_SEC;
+            while (faceBuffer.length && faceBuffer[0].t < cutoff) faceBuffer.shift();
           }
           return;
         }
 
-        hasFace = true;
         noFaceDuration = 0;
 
         const blinkL = face.blendshapes.get('eyeBlinkLeft') ?? 0;
         const blinkR = face.blendshapes.get('eyeBlinkRight') ?? 0;
+        latestBlinkMax = Math.max(blinkL, blinkR);
         isBlinking = blinkL > BLINK_THRESHOLD || blinkR > BLINK_THRESHOLD;
 
         if (phase === 'ready') {
-          // Rolling-window live preview. Same blink/post-blink filtering as the test.
+          elapsed += dt;
+
+          // Record per-frame face/head snapshot for the contextual prompt.
+          const m = face.rawTransformMatrix;
+          faceBuffer.push({
+            t: elapsed,
+            hasFace: true,
+            size: computeFaceSize(face.landmarks),
+            hasMatrix: !!m,
+            tx: m ? m[12] : 0,
+            ty: m ? m[13] : 0,
+            tz: m ? m[14] : 0,
+          });
+          const bufCutoff = elapsed - PROMPT_WINDOW_SEC;
+          while (faceBuffer.length && faceBuffer[0].t < bufCutoff) faceBuffer.shift();
+
+          // Rolling-window live gaze preview. Same blink/post-blink filtering as the test.
           if (isBlinking) {
             postBlinkTimer = POST_BLINK_GRACE_SEC;
           } else if (postBlinkTimer > 0) {
@@ -518,7 +677,6 @@ export const kasina: Experiment = {
             const [rawX, rawY] = extractGazeDeg(face.blendshapes);
             const [gx, gy] = applyCalibration(rawX, rawY, dt);
             const dev = Math.hypot(gx, gy);
-            elapsed += dt;
             samples.push({ t: elapsed, x: gx, y: gy, dev, bcea: 0 });
             const cutoff = elapsed - PREVIEW_WINDOW_SEC;
             while (samples.length && samples[0].t < cutoff) samples.shift();
@@ -588,7 +746,10 @@ export const kasina: Experiment = {
 
         // Fixation target — shown during ready/active only; the result screen uses the space.
         if (phase !== 'result') {
-          rc.circle(cx, cy, 0.5, { fill: charcoal, fillStyle: 'solid', stroke: charcoal, strokeWidth: 0.02 });
+          const dotColor = phase === 'active'
+            ? ACTIVE_DOT_COLORS[Math.min(checkpointsPassed, ACTIVE_DOT_COLORS.length - 1)]
+            : charcoal;
+          rc.circle(cx, cy, 0.5, { fill: dotColor, fillStyle: 'solid', stroke: dotColor, strokeWidth: 0.02 });
           ctx.save();
           ctx.strokeStyle = cream;
           ctx.lineWidth = 0.05;
@@ -601,19 +762,46 @@ export const kasina: Experiment = {
           ctx.arc(cx, cy, 0.05, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
+
+          // Progress ring just outside the dot. Same color as the dot.
+          // Ready: tracks preparatory progress (gated condition's nearness to threshold).
+          // Active: tracks time elapsed in the current checkpoint segment.
+          // A faint full-circle track is always drawn in ready so the user can see the ring exists.
+          const ringFrac = phase === 'ready' ? readyProgress() : activeProgress();
+          ctx.save();
+          ctx.strokeStyle = dotColor;
+          ctx.lineWidth = 0.08;
+          ctx.lineCap = 'round';
+          if (phase === 'ready') {
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 0.42, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+          if (ringFrac > 0.005) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, 0.42, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * ringFrac);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
 
         if (phase === 'ready') {
           pxText(ctx, 'One-Minute Focus Test', cx, 1.0, '0.7px Fredoka', charcoal, 'center');
-          pxText(ctx, 'Pick something to look at — the dot, anything.', cx, 1.9, '0.32px Sora', stone, 'center');
-          pxText(ctx, 'Hit start, then hold your gaze on it until the test ends.', cx, 2.4, '0.32px Sora', stone, 'center');
-          pxText(ctx, 'Steady gaze ≈ steady attention. We measure how steady.',  cx, 2.9, '0.32px Sora', stone, 'center');
-          const prompt = !hasFace ? 'show your face'
-                       : isBlinking ? 'open your eyes'
-                       : isGazeStable() ? 'ready to start'
-                       : '';
-          const promptColor = isGazeStable() && hasFace && !isBlinking ? sage : charcoal;
-          if (prompt) pxText(ctx, prompt, cx, gh - 2.0, '0.5px Fredoka', promptColor, 'center');
+
+          const p = currentPrompt();
+          const promptText: Record<typeof p, string> = {
+            waitingForUser: 'waiting for user...',
+            sitDown: 'please have a seat',
+            openEyes: 'open your eyes or adjust your gaze upwards',
+            remainStill: 'remain still',
+            holdGaze: 'hold your gaze on a point',
+            pressSpace: 'press space to start',
+          };
+          const promptColor = p === 'pressSpace' ? sage : charcoal;
+          pxText(ctx, promptText[p], cx, cy - 1.4, '0.7px Fredoka', promptColor, 'center');
+
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');
           // Live gaze preview (rolling window) with all tier rings for context.
           drawScatterPanel(ctx, 0.4, 5.4, 3.4, 3.4);
