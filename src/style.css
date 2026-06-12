@@ -336,6 +336,10 @@ body {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
 #touch-bar button {
   background: rgba(0, 0, 0, 0.06);
   color: var(--text);

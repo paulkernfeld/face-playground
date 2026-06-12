@@ -99,6 +99,9 @@ Face tracking playground using MediaPipe FaceMesh (468 landmarks) with a canvas 
 | **Mindfulness: slow startup** — gate script takes too long to launch | B | Vite + MediaPipe model load on every check is expensive. Related to check server idea below. |
 | **Mindfulness: persistent check server** — always-running server for ambient monitoring | B | Long-running Vite + MediaPipe process. Script just queries it (instant response). Enables ambient posture checking — Claude keeps working, server flags issues. Solves startup speed too. |
 | **Mindfulness: store calibrated posture** — save good posture to localStorage | B | Calibrate once, use as baseline for posture checks. Persists across sessions via localStorage. |
+| **Kasina: polish landing page** — explain the demo, look good | B | Needs design pass |
+| **Kasina: smoother start gate** — calibration for "ready to start" feels off | B | Needs design pass |
+| **Kasina: validate BCEA** — not convinced it's measuring something meaningful | B | Needs investigation — compare against simpler gaze stats |
 | Sent to friends for feedback | B | Waiting for responses |
 
 ## Philosophy

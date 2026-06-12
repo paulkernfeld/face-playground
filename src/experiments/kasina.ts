@@ -15,20 +15,19 @@ const BLENDSHAPE_TO_DEG = 20;
 
 // Gated checkpoints — cumulative BCEA@95% must be below the threshold to pass.
 // Baseline thresholds from quintile calibration against Longhin et al. 2016 MAIA
-// (N=358 IR fixation data). Tune empirically with pilot data.
-const CHECKPOINTS_SEC =      [10,  30,  60,  180];
-const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0];
-const TEST_CEILING_SEC = 180;
+// (N=358 IR fixation data). The 600s/Monk threshold is a guess — tune with pilot data.
+const CHECKPOINTS_SEC =      [10,  30,  60,  180, 600];
+const TIER_THRESHOLDS_DEG2 = [3.4, 2.2, 1.5, 1.0, 0.7];
+const TEST_CEILING_SEC = 600;
 
-type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked';
-const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked'];
+type Tier = 'Cooked' | 'Scroller' | 'Normie' | 'Locked In' | 'Cracked' | 'Monk';
+const TIERS: Tier[] = ['Cooked', 'Scroller', 'Normie', 'Locked In', 'Cracked', 'Monk'];
 const TIER_COLORS: Record<Tier, string> = {
-  'Cracked': sage, 'Locked In': sage, 'Normie': honey, 'Scroller': honey, 'Cooked': rose,
+  'Monk': lavender, 'Cracked': sage, 'Locked In': sage, 'Normie': honey, 'Scroller': honey, 'Cooked': rose,
 };
 
 // Central fixation dot color during the active phase — climbs as checkpoints pass.
-// Cream wouldn't read against the warm cream canvas bg, so top tiers use sky/lavender.
-const ACTIVE_DOT_COLORS = [rose, terra, honey, sky, lavender];
+const ACTIVE_DOT_COLORS = [rose, terra, honey, sky, lavender, sage];
 
 const BLINK_THRESHOLD = 0.2;
 const MAX_BLINK_SEC = 2.0;
@@ -99,6 +98,7 @@ function extractGazeDeg(bs: Blendshapes): [number, number] {
 
 export const kasina: Experiment = {
   name: "kasina",
+  bgColor: '#000',
 
   ...(() => {
     let phase: Phase;
@@ -340,7 +340,7 @@ export const kasina: Experiment = {
     }
 
     function endTest() {
-      resultTier = TIERS[Math.min(checkpointsPassed, 4)];
+      resultTier = TIERS[Math.min(checkpointsPassed, TIERS.length - 1)];
       resultBcea = bcea95(stats);
       phase = 'result';
       setLinksVisible(true);
@@ -349,7 +349,7 @@ export const kasina: Experiment = {
     // Each tier threshold is rendered as an area-equivalent circle (r = √(t/π)).
     // BCEA is variance-based (deg²) and the plot axes are linear deviation (deg),
     // so this is an approximation — but it lets you eyeball "am I inside Monk?".
-    const RING_TIERS: Tier[] = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
+    const RING_TIERS: Tier[] = ['Scroller', 'Normie', 'Locked In', 'Cracked', 'Monk'];
 
     function drawScatterPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
       // Dark background for "glowing dots" aesthetic (share-worthy contrast).
@@ -447,7 +447,7 @@ export const kasina: Experiment = {
       pxText(ctx, `BCEA@95%: ${liveBcea.toFixed(2)} deg²`, px + 0.2, py + 0.4, '0.28px Sora', cream, 'left');
     }
 
-    const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked'];
+    const CHECKPOINT_LABELS = ['Scroller', 'Normie', 'Locked In', 'Cracked', 'Monk'];
 
     function drawTimeSeriesPanel(ctx: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number) {
       ctx.save();
@@ -736,7 +736,7 @@ export const kasina: Experiment = {
           }
         }
 
-        // 180s ceiling: Monk already earned at 60s, this just ends the test.
+        // Final ceiling: last checkpoint already cleared, this just ends the test.
         if (elapsed >= TEST_CEILING_SEC) { endTest(); return; }
       },
 
@@ -748,7 +748,7 @@ export const kasina: Experiment = {
         if (phase !== 'result') {
           const dotColor = phase === 'active'
             ? ACTIVE_DOT_COLORS[Math.min(checkpointsPassed, ACTIVE_DOT_COLORS.length - 1)]
-            : charcoal;
+            : stone;
           rc.circle(cx, cy, 0.5, { fill: dotColor, fillStyle: 'solid', stroke: dotColor, strokeWidth: 0.02 });
           ctx.save();
           ctx.strokeStyle = cream;
@@ -788,7 +788,7 @@ export const kasina: Experiment = {
         }
 
         if (phase === 'ready') {
-          pxText(ctx, 'One-Minute Focus Test', cx, 1.0, '0.7px Fredoka', charcoal, 'center');
+          pxText(ctx, 'Focus Test', cx, 1.0, '0.7px Fredoka', cream, 'center');
 
           const p = currentPrompt();
           const promptText: Record<typeof p, string> = {
@@ -799,7 +799,7 @@ export const kasina: Experiment = {
             holdGaze: 'hold your gaze on a point',
             pressSpace: 'press space to start',
           };
-          const promptColor = p === 'pressSpace' ? sage : charcoal;
+          const promptColor = p === 'pressSpace' ? sage : cream;
           pxText(ctx, promptText[p], cx, cy - 1.4, '0.7px Fredoka', promptColor, 'center');
 
           pxText(ctx, 'for entertainment, not medical assessment', cx, gh - 0.6, '0.22px Sora', stone, 'center');

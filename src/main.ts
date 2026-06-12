@@ -415,7 +415,7 @@ async function runLoop() {
     }
 
     // Clear full canvas (dark letterbox)
-    ctx.fillStyle = canvasBg;
+    ctx.fillStyle = currentExp.bgColor ?? canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Enter game-unit transform
@@ -575,7 +575,7 @@ if (angleTestParam !== null) {
       if (currentExp.updatePose && injectedPoses) {
         currentExp.updatePose(injectedPoses, dt);
       }
-      ctx.fillStyle = canvasBg;
+      ctx.fillStyle = currentExp.bgColor ?? canvasBg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       ctx.translate(gameX, gameY);
@@ -603,7 +603,7 @@ if (angleTestParam !== null) {
     currentExp.demo?.();
 
     // Render one frame in game-unit space
-    ctx.fillStyle = canvasBg;
+    ctx.fillStyle = currentExp.bgColor ?? canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(gameX, gameY);

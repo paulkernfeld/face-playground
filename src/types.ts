@@ -30,4 +30,6 @@ export interface Experiment {
   cleanup(): void;
   /** Extra buttons to add to the touch bar while this experiment is active. */
   extraButtons?: Array<{ label: string; key: string; onClick: () => void }>;
+  /** Override the default canvas background color. Painted before the debug video, so video still renders on top when toggled. */
+  bgColor?: string;
 }
