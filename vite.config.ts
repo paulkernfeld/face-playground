@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
 import fs from "fs";
 import path from "path";
 
@@ -38,5 +39,65 @@ export default defineConfig({
         });
       },
     },
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: "auto",
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
+        // Default is 2 MB; raise so JS bundles don't get skipped if they grow.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            // MediaPipe WASM (CORS-enabled, jsdelivr)
+            urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/@mediapipe\/.*/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "mediapipe-wasm",
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // MediaPipe model .task files (CORS-enabled, storage.googleapis.com)
+            urlPattern: /^https:\/\/storage\.googleapis\.com\/mediapipe-models\/.*/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "mediapipe-models",
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "google-fonts-stylesheets",
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-webfonts",
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
+      manifest: {
+        name: "face playground",
+        short_name: "face-playground",
+        description: "Webcam mini-games using MediaPipe face + body tracking.",
+        theme_color: "#f7efe2",
+        background_color: "#f7efe2",
+        display: "standalone",
+        start_url: "/face-playground/",
+        scope: "/face-playground/",
+        icons: [],
+      },
+    }),
   ],
 });

@@ -59,7 +59,8 @@ let showVideo = false;
 let rc: GameRoughCanvas;
 
 // -- Preload FaceMesh WASM + model (starts immediately, awaited when needed) --
-const VISION_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+// Pinned version (not @latest) so the service worker cache invalidates on dep upgrades.
+const VISION_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm";
 const FACE_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const filesetPromise = FilesetResolver.forVisionTasks(VISION_WASM_URL);
 

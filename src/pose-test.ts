@@ -36,7 +36,7 @@ export async function startPoseTest() {
 
   // Init PoseLandmarker
   const fileset = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
   );
   const poseLandmarker = await PoseLandmarker.createFromOptions(fileset, {
     baseOptions: {

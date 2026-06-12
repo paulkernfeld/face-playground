@@ -35,7 +35,7 @@ export async function startAngleTest() {
 
   // Init FaceLandmarker
   const fileset = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
   );
   const landmarker = await FaceLandmarker.createFromOptions(fileset, {
     baseOptions: {
