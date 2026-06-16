@@ -69,13 +69,12 @@ const POSE_AXES: PoseAxis[] = ['pitch', 'yaw', 'roll'];
 // Derived meditation metrics: rough conjectures, expect to tune w/ playtest.
 // Hypothesis: low arousal (~-0.5) + low |valence| + present attention ≈ equanimity.
 const DERIVED_KEYS = [
-  'equanimity', 'relaxation', 'restlessness', 'desire', 'aversion', 'sloth',
+  'equanimity', 'restlessness', 'desire', 'aversion', 'sloth',
   'headMotion', 'hindrance',
 ] as const;
 type DerivedKey = typeof DERIVED_KEYS[number];
 const DERIVED_COLORS: Record<DerivedKey, string> = {
   equanimity:   teal,
-  relaxation:   sage,
   restlessness: rose,
   desire:       lavender,
   aversion:     charcoal,
@@ -100,7 +99,7 @@ const EMPTY_EMO = (): Record<Emotion, number> =>
 // Using FACE_EMOTION_HD only — standard EMOTION dropped per playtest decision (HD is better calibrated).
 let emotion: Record<Emotion, number> = EMPTY_EMO();
 const latestDerived: Record<DerivedKey, number> = {
-  equanimity: 0, relaxation: 0, restlessness: 0, desire: 0, aversion: 0,
+  equanimity: 0, restlessness: 0, desire: 0, aversion: 0,
   sloth: 0, headMotion: 0, hindrance: 0,
 };
 // Russell quadrant label (kept for header readout; per-affect lines no longer rendered).
@@ -152,6 +151,29 @@ const signalSeries: Record<SignalKey, TVPoint[]> = {
 };
 const emoSeries: EmoPoint[] = [];
 const derivedSeries: DerivedPoint[] = [];
+// Rolling pose buffer for headMotion = std-dev over the last few seconds.
+// Captures fidgeting AND slow drift (a still-but-tilted head reads zero, which
+// is the point — we want motion, not displacement from neutral).
+const HEAD_MOTION_WINDOW_SEC = 3;
+// Pose values are radians-ish (~0..0.3 in normal movement); std-dev × 5 maps
+// active fidgeting into a roughly 0..1 visible range.
+const HEAD_MOTION_SCALE = 5;
+const poseBuffer: Array<{ t: number; pitch: number; yaw: number; roll: number }> = [];
+function computeHeadMotion(): number {
+  const cutoff = elapsed - HEAD_MOTION_WINDOW_SEC;
+  while (poseBuffer.length && poseBuffer[0].t < cutoff) poseBuffer.shift();
+  const n = poseBuffer.length;
+  if (n < 2) return 0;
+  let sp = 0, sy = 0, sr = 0;
+  for (const p of poseBuffer) { sp += p.pitch; sy += p.yaw; sr += p.roll; }
+  const mp = sp / n, my = sy / n, mr = sr / n;
+  let vp = 0, vy = 0, vr = 0;
+  for (const p of poseBuffer) {
+    vp += (p.pitch - mp) ** 2; vy += (p.yaw - my) ** 2; vr += (p.roll - mr) ** 2;
+  }
+  const std = Math.sqrt((vp + vy + vr) / n);
+  return Math.min(1, std * HEAD_MOTION_SCALE);
+}
 function trim(arr: { t: number }[]) {
   const cutoff = elapsed - WINDOW_5MIN;
   while (arr.length && arr[0].t < cutoff) arr.shift();
@@ -359,46 +381,44 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 const SMOOTH_HALF_LIFE_SEC = 5;
 // Derived meditation metrics — rough conjectures, expect to tune by playtest.
 //   equanimity:   calm + neutral + present.
-//   relaxation:   negative-arousal-leaning, mildly pleasant, attentive (not slothful).
-//   restlessness: high arousal AND distracted.
+//   restlessness: high arousal — 0 below 0.5, ramps to 1 at 1.
 //   desire:       wish (kāmacchanda proxy).
-//   sloth:        low attention + low arousal (drowsy / dull).
-//   headMotion:   ||pose||₂ — proxy for fidgeting away from neutral.
-//   hindrance:    mean of restlessness + desire + sloth (no aversion/doubt signal).
+//   aversion:     max(anger%, disgust%, negative-valence) — whichever channel sees it.
+//   sloth:        deep low arousal — 0 above -0.5, ramps to 1 at -1.
+//   headMotion:   rolling std-dev of pose over ~3s — fidgeting + slow drift, not displacement.
+//   hindrance:    max of restlessness, desire, aversion, sloth (whichever's loudest).
 type DerivedInput = {
   valence: number; arousal: number; attention: number; wish: number;
-  positivity: number; pitch: number; yaw: number; roll: number;
+  positivity: number; headMotion: number;
+  anger: number; disgust: number;
 };
 function deriveAt(t: number, s: DerivedInput): DerivedPoint {
   const v = s.valence, a = s.arousal, att = s.attention;
   const eq  = (1 - Math.abs(v)) * (1 - Math.abs(a)) * att;
-  // Hypothesis from user: -0.5 arousal is the meditation sweet spot.
-  const rlx = (1 - Math.abs(a + 0.5)) * (0.5 + v / 2) * att;
-  const rst = Math.max(0, a) * (1 - 0.5 * att);
+  const rst = 2 * a - 1;
   const des = s.wish;
-  // Aversion / ill-will: negative valence + activated (the negative-active quadrant).
-  const avr = Math.max(0, -v) * Math.max(0, a);
-  const slo = (1 - att) * Math.max(0, -a);
-  const hm  = Math.min(1, Math.hypot(s.pitch, s.yaw, s.roll));
-  const hind = (rst + des + avr + slo) / 4;
+  const avr = Math.max(s.anger, s.disgust, Math.max(0, -v));
+  const slo = -2 * a - 1;
   const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  const hind = Math.max(clamp(rst), clamp(des), clamp(avr), clamp(slo));
   return {
     t,
     equanimity:   clamp(eq),
-    relaxation:   clamp(rlx),
     restlessness: clamp(rst),
     desire:       clamp(des),
     aversion:     clamp(avr),
     sloth:        clamp(slo),
-    headMotion:   clamp(hm),
+    headMotion:   clamp(s.headMotion),
     hindrance:    clamp(hind),
   };
 }
 function computeDerived() {
+  poseBuffer.push({ t: elapsed, pitch: pose.pitch, yaw: pose.yaw, roll: pose.roll });
   const p = deriveAt(elapsed, {
     valence: latest.valence, arousal: latest.arousal,
     attention: latest.attention, wish: latest.wish, positivity: latest.positivity,
-    pitch: pose.pitch, yaw: pose.yaw, roll: pose.roll,
+    headMotion: computeHeadMotion(),
+    anger: emotion.Angry, disgust: emotion.Disgust,
   });
   for (const k of DERIVED_KEYS) latestDerived[k] = p[k];
   derivedSeries.push(p);
@@ -621,6 +641,7 @@ export const morphcast: Experiment = {
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
     derivedSeries.length = 0;
+    poseBuffer.length = 0;
     quadrant = '';
     pose.pitch = pose.yaw = pose.roll = 0;
     if (licenseKey && status !== 'running' && status !== 'loading') {
@@ -696,9 +717,9 @@ export const morphcast: Experiment = {
         attention:0.6  + 0.25 * Math.sin(t * 0.04),
         wish:     0.5  + 0.2  * Math.sin(t * 0.03 + 1),
         positivity:0.55 + 0.2 * Math.sin(t * 0.025 + 2),
-        pitch:    0.15 * Math.sin(t * 0.07),
-        yaw:      0.25 * Math.sin(t * 0.05 + 0.4),
-        roll:     0.10 * Math.cos(t * 0.06),
+        headMotion: Math.max(0, 0.3 + 0.3 * Math.sin(t * 0.08)),
+        anger:    Math.max(0, 0.04 + 0.04 * Math.sin(t * 0.05 + 6.5)),
+        disgust:  Math.max(0, 0.04 + 0.03 * Math.sin(t * 0.05 + 5.5)),
       }));
     }
     Object.assign(latestDerived, derivedSeries[derivedSeries.length - 1]);
@@ -711,6 +732,7 @@ export const morphcast: Experiment = {
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
     derivedSeries.length = 0;
+    poseBuffer.length = 0;
     quadrant = '';
     pose.pitch = pose.yaw = pose.roll = 0;
     elapsed = 0;
