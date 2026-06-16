@@ -56,6 +56,9 @@ const latest: Record<SignalKey, number> = {
 let emotion: Record<Emotion, number> = {
   Happy: 0, Surprise: 0, Neutral: 1, Sad: 0, Fear: 0, Disgust: 0, Angry: 0,
 };
+// Russell circumplex: 98 named affect probabilities (0..1) + a quadrant label.
+let affects: Record<string, number> = {};
+let quadrant = '';
 
 let eventCount = 0;
 const evtCounts: Record<string, number> = {};
@@ -86,6 +89,8 @@ function exposeForTests() {
     wish: latest.wish,
     positivity: latest.positivity,
     emotion: { ...emotion },
+    affects: { ...affects },
+    quadrant,
   };
 }
 
@@ -98,6 +103,12 @@ const signalSeries: Record<SignalKey, TVPoint[]> = {
   attention: [], wish: [], positivity: [], valence: [], arousal: [],
 };
 const emoSeries: EmoPoint[] = [];
+type AffectsPoint = { t: number; affects: Record<string, number> };
+const russSeries: AffectsPoint[] = [];
+// Render affects whose peak probability over the window exceeds this.
+const AFFECT_PEAK_THRESHOLD = 0.2;
+// Hard cap so the plot doesn't melt if too many affects clear the threshold.
+const AFFECT_MAX_LINES = 12;
 function trim(arr: { t: number }[]) {
   const cutoff = elapsed - WINDOW_5MIN;
   while (arr.length && arr[0].t < cutoff) arr.shift();
@@ -151,6 +162,12 @@ const onAV = (e: any) => {
     signalSeries.arousal.push({ t: elapsed, v: out.arousal });
     trim(signalSeries.arousal);
   }
+  if (out.affects98 && typeof out.affects98 === 'object') {
+    affects = { ...out.affects98 };
+    russSeries.push({ t: elapsed, affects });
+    trim(russSeries);
+  }
+  if (typeof out.quadrant === 'string') quadrant = out.quadrant;
   eventCount++;
 };
 const onEmotion = (e: any) => {
@@ -263,7 +280,8 @@ async function bootMorphcast() {
     addIfAvailable('FACE_ATTENTION');
     addIfAvailable('FACE_WISH');
     addIfAvailable('FACE_POSITIVITY');
-    addIfAvailable('FACE_FEATURES');
+    // Skip FACE_FEATURES — probe showed it returns CelebA attrs (Hair color, Eyeglasses,
+    // Goatee), not blink rate or gaze direction. No use here.
     addIfAvailable('FACE_POSE');
     addIfAvailable('DATA_AGGREGATOR');
 
@@ -292,6 +310,28 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.lineWidth = 0.02;
   ctx.strokeRect(x, y, w, h);
   pxText(ctx, title, x + 0.2, y + 0.4, '0.22px Sora', stone, 'left');
+}
+
+// Time-based EWMA. Half-life is in seconds — irregular sample spacing handled
+// via per-step alpha = 1 - 2^(-dt / halfLife). Used to calm the 5-min panels;
+// 30-second panels stay raw so quick changes are still legible.
+const SMOOTH_HALF_LIFE_SEC = 5;
+function smoothPoints<P>(points: P[], getT: (p: P) => number, getV: (p: P) => number): TVPoint[] {
+  if (points.length === 0) return [];
+  const out: TVPoint[] = [];
+  let prevT = getT(points[0]);
+  let s = getV(points[0]);
+  out.push({ t: prevT, v: s });
+  for (let i = 1; i < points.length; i++) {
+    const t = getT(points[i]);
+    const v = getV(points[i]);
+    const dt = Math.max(0, t - prevT);
+    const alpha = 1 - Math.pow(2, -dt / SMOOTH_HALF_LIFE_SEC);
+    s = s + alpha * (v - s);
+    out.push({ t, v: s });
+    prevT = t;
+  }
+  return out;
 }
 
 function drawLine<P>(ctx: CanvasRenderingContext2D, pts: P[], getX: (p: P) => number, getY: (p: P) => number) {
@@ -340,12 +380,18 @@ function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
   const ty = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
   const visible = emoSeries.filter(p => p.t >= t0);
+  const smooth = windowSec >= 60;
 
   ctx.lineWidth = 0.03;
   for (const k of EMOTIONS) {
     ctx.globalAlpha = 0.75;
     ctx.strokeStyle = EMOTION_COLORS[k];
-    drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]));
+    if (smooth) {
+      const sm = smoothPoints(visible, p => p.t, p => p[k]);
+      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v));
+    } else {
+      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]));
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -384,11 +430,15 @@ function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   const ty01 = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
 
   ctx.lineWidth = 0.035;
+  const smooth = windowSec >= 60;
   for (const k of SIGNAL_KEYS) {
     ctx.globalAlpha = 0.85;
     ctx.strokeStyle = SIGNAL_COLORS[k];
     const visible = signalSeries[k].filter(p => p.t >= t0);
-    drawLine(ctx, visible, p => tx(p.t), p => ty01(NORMALIZE[k](p.v)));
+    const pts = smooth
+      ? smoothPoints(visible, p => p.t, p => NORMALIZE[k](p.v))
+      : visible.map(p => ({ t: p.t, v: NORMALIZE[k](p.v) }));
+    drawLine(ctx, pts, p => tx(p.t), p => ty01(p.v));
   }
   ctx.globalAlpha = 1;
 
@@ -408,10 +458,81 @@ function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   }
 }
 
+// Stable per-name hue so the same affect keeps its color across frames.
+function affectColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 55%, 48%)`;
+}
+
+function drawRussPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
+  drawPanel(ctx, x, y, w, h, `russell affects — ${windowLabel(windowSec)}`);
+  const padL = 0.5, padR = 1.7, padT = 0.55, padB = 0.45;
+  const plotX = x + padL;
+  const plotY = y + padT;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  plotFrame(ctx, plotX, plotY, plotW, plotH, windowSec);
+
+  const t0 = elapsed - windowSec;
+  const visible = russSeries.filter(p => p.t >= t0);
+  if (visible.length === 0) return;
+
+  // Compute peak prob per affect name over the window; render only sparse non-zeros.
+  const peaks: Record<string, number> = {};
+  for (const p of visible) {
+    for (const name in p.affects) {
+      const v = p.affects[name];
+      if (v > (peaks[name] ?? 0)) peaks[name] = v;
+    }
+  }
+  const active = Object.entries(peaks)
+    .filter(([, peak]) => peak >= AFFECT_PEAK_THRESHOLD)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, AFFECT_MAX_LINES)
+    .map(([name]) => name);
+  if (active.length === 0) return;
+
+  const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
+  const ty = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
+
+  ctx.lineWidth = 0.025;
+  const smooth = windowSec >= 60;
+  for (const name of active) {
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = affectColor(name);
+    if (smooth) {
+      const sm = smoothPoints(visible, p => p.t, p => p.affects[name] ?? 0);
+      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v));
+    } else {
+      drawLine(ctx, visible, p => tx(p.t), p => ty(p.affects[name] ?? 0));
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Legend: sort by current value (latest frame), cap at 8 to fit.
+  const last = visible[visible.length - 1].affects;
+  const legend = active
+    .map(name => ({ name, v: last[name] ?? 0 }))
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 8);
+  const legendX = plotX + plotW + 0.12;
+  let ly = plotY + 0.15;
+  for (const it of legend) {
+    ctx.fillStyle = affectColor(it.name);
+    ctx.fillRect(legendX, ly - 0.09, 0.13, 0.09);
+    pxText(ctx, `${it.name} ${(it.v * 100).toFixed(0)}%`,
+      legendX + 0.18, ly, '0.13px Sora', stone, 'left');
+    ly += 0.18;
+  }
+}
+
 function drawHeader(ctx: CanvasRenderingContext2D, gw: number) {
-  pxText(ctx, 'morphcast playground', gw / 2, 0.6, '0.5px Fredoka', charcoal, 'center');
-  pxText(ctx, 'emotion AI from webcam — exploring attention & affect',
-    gw / 2, 0.95, '0.2px Sora', stone, 'center');
+  pxText(ctx, 'morphcast playground', gw / 2, 0.55, '0.45px Fredoka', charcoal, 'center');
+  const sub = quadrant
+    ? `russell quadrant: ${quadrant.toLowerCase()}`
+    : 'emotion AI from webcam — exploring attention & affect';
+  pxText(ctx, sub, gw / 2, 0.88, '0.2px Sora', stone, 'center');
 }
 
 function drawNoKey(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
@@ -440,6 +561,9 @@ export const morphcast: Experiment = {
     eventCount = 0;
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
+    russSeries.length = 0;
+    affects = {};
+    quadrant = '';
     if (licenseKey && status !== 'running' && status !== 'loading') {
       bootMorphcast();
     } else if (!licenseKey) {
@@ -459,20 +583,24 @@ export const morphcast: Experiment = {
     if (status === 'loading') return drawLoading(ctx, gw, gh);
     if (status === 'error') return drawError(ctx, gw, gh);
 
-    const top = 1.25;
+    // 3 rows (emotions / signals / russell) × 2 cols (30s / 5min)
+    const top = 1.15;
     const colGap = 0.2;
-    const rowGap = 0.2;
+    const rowGap = 0.15;
     const colW = (gw - 0.4 - colGap) / 2;
-    const rowH = (gh - top - 0.3 - rowGap) / 2;
+    const rowH = (gh - top - 0.25 - 2 * rowGap) / 3;
     const leftX = 0.2;
     const rightX = leftX + colW + colGap;
-    const topY = top;
-    const botY = topY + rowH + rowGap;
+    const row1 = top;
+    const row2 = row1 + rowH + rowGap;
+    const row3 = row2 + rowH + rowGap;
 
-    drawEmoPanel    (ctx, leftX,  topY, colW, rowH, WINDOW_30S);
-    drawSignalPanel (ctx, rightX, topY, colW, rowH, WINDOW_30S);
-    drawEmoPanel    (ctx, leftX,  botY, colW, rowH, WINDOW_5MIN);
-    drawSignalPanel (ctx, rightX, botY, colW, rowH, WINDOW_5MIN);
+    drawEmoPanel    (ctx, leftX,  row1, colW, rowH, WINDOW_30S);
+    drawEmoPanel    (ctx, rightX, row1, colW, rowH, WINDOW_5MIN);
+    drawSignalPanel (ctx, leftX,  row2, colW, rowH, WINDOW_30S);
+    drawSignalPanel (ctx, rightX, row2, colW, rowH, WINDOW_5MIN);
+    drawRussPanel   (ctx, leftX,  row3, colW, rowH, WINDOW_30S);
+    drawRussPanel   (ctx, rightX, row3, colW, rowH, WINDOW_5MIN);
   },
 
   demo() {
@@ -480,7 +608,10 @@ export const morphcast: Experiment = {
     latest.attention = 0.78; latest.wish = 0.55; latest.positivity = 0.62;
     latest.valence = 0.4; latest.arousal = 0.2;
     emotion = { Happy: 0.6, Surprise: 0.1, Neutral: 0.2, Sad: 0.02, Fear: 0.03, Disgust: 0.02, Angry: 0.03 };
+    quadrant = 'High Control';
     elapsed = WINDOW_5MIN;
+    // Sparse Russell affects: only a handful active, rest near zero — mirrors real data shape.
+    const demoAffects = ['Pleased', 'Calm', 'Content', 'Relaxed', 'Light Hearted', 'Hopeful', 'Interested'];
     const N = 150;
     for (let i = 0; i < N; i++) {
       const t = (i / N) * WINDOW_5MIN;
@@ -500,7 +631,13 @@ export const morphcast: Experiment = {
         Disgust:  Math.max(0, 0.05 + 0.05 * Math.sin(phase + 5)),
         Angry:    Math.max(0, 0.05 + 0.05 * Math.sin(phase + 6)),
       });
+      const aff: Record<string, number> = {};
+      demoAffects.forEach((name, idx) => {
+        aff[name] = Math.max(0, 0.45 + 0.35 * Math.sin(phase + idx));
+      });
+      russSeries.push({ t, affects: aff });
     }
+    affects = russSeries[russSeries.length - 1].affects;
   },
 
   cleanup() {
@@ -509,6 +646,9 @@ export const morphcast: Experiment = {
     detachListeners();
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
+    russSeries.length = 0;
+    affects = {};
+    quadrant = '';
     elapsed = 0;
     eventCount = 0;
     for (const k of Object.keys(evtCounts)) delete evtCounts[k];
