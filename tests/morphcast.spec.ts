@@ -58,12 +58,18 @@ test("morphcast: loads SDK and emits events", async ({ page }) => {
   await page.waitForFunction(() => ((window as any).__morphcast?.eventCount ?? 0) > 0,
     undefined, { timeout: 30_000 });
 
+  // Wait for valence/arousal to drift from initial 0. Module-level smoothness
+  // (config in morphcast.ts) means values move slowly — need many events before
+  // the EWMA escapes 0. This is also the regression check for the AV payload
+  // parsing bug (looked for .output.affects instead of .output).
+  await page.waitForFunction(() => {
+    const m = (window as any).__morphcast;
+    return Math.abs(m?.valence ?? 0) + Math.abs(m?.arousal ?? 0) > 0;
+  }, undefined, { timeout: 30_000 });
+
   const final = await getSnapshot(page);
   expect(final).not.toBeNull();
   expect(final!.eventCount).toBeGreaterThan(0);
-
-  // Regression: AV payload parsing was broken (looked for .output.affects instead of .output).
-  // With the straight.png fixture MorphCast reliably returns non-zero valence + arousal.
   expect(Math.abs(final!.valence) + Math.abs(final!.arousal)).toBeGreaterThan(0);
 
   console.log("morphcast snapshot:", JSON.stringify({

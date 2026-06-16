@@ -69,6 +69,16 @@ export default defineConfig({
             },
           },
           {
+            // MorphCast SDK (mphtools + ai-sdk + module chunks fetched lazily)
+            urlPattern: /^https:\/\/(ai-)?sdk\.morphcast\.com\/.*/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "morphcast-sdk",
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
             handler: "StaleWhileRevalidate",
             options: {

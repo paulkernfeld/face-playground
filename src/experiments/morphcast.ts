@@ -11,6 +11,26 @@ import { charcoal, stone, rose, honey, sage, terra, sky, lavender, teal } from '
 const MPH_TOOLS_URL = "https://sdk.morphcast.com/mphtools/v1.1/mphtools.js";
 const AI_SDK_URL = "https://ai-sdk.morphcast.com/v1.16/ai-sdk.js";
 
+// Smoothness param accepted by most MorphCast modules. SDK treats 1.0 as
+// "100% previous value" (signal freezes — never updates), so cap just under at
+// 0.95: heavy smoothing for the meditation use case, but values still breathe.
+// (We also EWMA-smooth ourselves for the 5-min view; raw module smoothing is cheap.)
+const MORPHCAST_SMOOTHNESS = 0.95;
+// HD emotion model benefits from ≥640px input — keep default downscale off so
+// the bigger model isn't wasted on a small frame.
+const MORPHCAST_MAX_INPUT_FRAME_SIZE = 640;
+// Per-module config. Only modules that accept `smoothness` get it — FACE_DETECTOR,
+// FACE_POSE, DATA_AGGREGATOR reject unknown keys and silently fail to start (no
+// events fire). Attention is asymmetric: rise slowly (don't claim presence until
+// it's real) but drop instantly (catch lapses early).
+const MODULE_CONFIG: Record<string, Record<string, number>> = {
+  FACE_AROUSAL_VALENCE: { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_EMOTION_HD:      { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_ATTENTION:       { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: 1.0, fallSmoothness: 0.0 },
+  FACE_POSITIVITY:      { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_WISH:            { smoothness: MORPHCAST_SMOOTHNESS },
+};
+
 type Status = 'no-key' | 'loading' | 'running' | 'error';
 
 const EMOTIONS = ['Happy', 'Surprise', 'Neutral', 'Sad', 'Fear', 'Disgust', 'Angry'] as const;
@@ -42,6 +62,27 @@ const NORMALIZE: Record<SignalKey, (v: number) => number> = {
   valence: v => (v + 1) / 2,
   arousal: v => (v + 1) / 2,
 };
+// Pose feeds headMotion (derived) only — not rendered as its own signal lines.
+type PoseAxis = 'pitch' | 'yaw' | 'roll';
+const POSE_AXES: PoseAxis[] = ['pitch', 'yaw', 'roll'];
+
+// Derived meditation metrics: rough conjectures, expect to tune w/ playtest.
+// Hypothesis: low arousal (~-0.5) + low |valence| + present attention ≈ equanimity.
+const DERIVED_KEYS = [
+  'equanimity', 'relaxation', 'restlessness', 'desire', 'aversion', 'sloth',
+  'headMotion', 'hindrance',
+] as const;
+type DerivedKey = typeof DERIVED_KEYS[number];
+const DERIVED_COLORS: Record<DerivedKey, string> = {
+  equanimity:   teal,
+  relaxation:   sage,
+  restlessness: rose,
+  desire:       lavender,
+  aversion:     charcoal,
+  sloth:        stone,
+  headMotion:   honey,
+  hindrance:    terra,
+};
 
 let status: Status = 'no-key';
 let statusMsg = '';
@@ -53,11 +94,16 @@ let listenersAttached = false;
 const latest: Record<SignalKey, number> = {
   attention: 0, wish: 0, positivity: 0, valence: 0, arousal: 0,
 };
-let emotion: Record<Emotion, number> = {
-  Happy: 0, Surprise: 0, Neutral: 1, Sad: 0, Fear: 0, Disgust: 0, Angry: 0,
+const pose: Record<PoseAxis, number> = { pitch: 0, yaw: 0, roll: 0 };
+const EMPTY_EMO = (): Record<Emotion, number> =>
+  ({ Happy: 0, Surprise: 0, Neutral: 1, Sad: 0, Fear: 0, Disgust: 0, Angry: 0 });
+// Using FACE_EMOTION_HD only — standard EMOTION dropped per playtest decision (HD is better calibrated).
+let emotion: Record<Emotion, number> = EMPTY_EMO();
+const latestDerived: Record<DerivedKey, number> = {
+  equanimity: 0, relaxation: 0, restlessness: 0, desire: 0, aversion: 0,
+  sloth: 0, headMotion: 0, hindrance: 0,
 };
-// Russell circumplex: 98 named affect probabilities (0..1) + a quadrant label.
-let affects: Record<string, number> = {};
+// Russell quadrant label (kept for header readout; per-affect lines no longer rendered).
 let quadrant = '';
 
 let eventCount = 0;
@@ -89,7 +135,8 @@ function exposeForTests() {
     wish: latest.wish,
     positivity: latest.positivity,
     emotion: { ...emotion },
-    affects: { ...affects },
+    pose: { ...pose },
+    derived: { ...latestDerived },
     quadrant,
   };
 }
@@ -99,16 +146,12 @@ const WINDOW_30S = 30;
 let elapsed = 0;
 type TVPoint = { t: number; v: number };
 type EmoPoint = { t: number } & Record<Emotion, number>;
+type DerivedPoint = { t: number } & Record<DerivedKey, number>;
 const signalSeries: Record<SignalKey, TVPoint[]> = {
   attention: [], wish: [], positivity: [], valence: [], arousal: [],
 };
 const emoSeries: EmoPoint[] = [];
-type AffectsPoint = { t: number; affects: Record<string, number> };
-const russSeries: AffectsPoint[] = [];
-// Render affects whose peak probability over the window exceeds this.
-const AFFECT_PEAK_THRESHOLD = 0.2;
-// Hard cap so the plot doesn't melt if too many affects clear the threshold.
-const AFFECT_MAX_LINES = 12;
+const derivedSeries: DerivedPoint[] = [];
 function trim(arr: { t: number }[]) {
   const cutoff = elapsed - WINDOW_5MIN;
   while (arr.length && arr[0].t < cutoff) arr.shift();
@@ -162,22 +205,7 @@ const onAV = (e: any) => {
     signalSeries.arousal.push({ t: elapsed, v: out.arousal });
     trim(signalSeries.arousal);
   }
-  if (out.affects98 && typeof out.affects98 === 'object') {
-    affects = { ...out.affects98 };
-    russSeries.push({ t: elapsed, affects });
-    trim(russSeries);
-  }
   if (typeof out.quadrant === 'string') quadrant = out.quadrant;
-  eventCount++;
-};
-const onEmotion = (e: any) => {
-  captureFirst('EMOTION', e); bumpCount('emotion');
-  const out = e?.detail?.output?.emotion; if (!out) return;
-  for (const k of EMOTIONS) {
-    if (typeof out[k] === 'number') emotion[k] = out[k];
-  }
-  emoSeries.push({ t: elapsed, ...emotion });
-  trim(emoSeries);
   eventCount++;
 };
 const onAttention = (e: any) => {
@@ -215,24 +243,33 @@ const onPositivity = (e: any) => {
     eventCount++;
   }
 };
-// Below modules' schemas not yet wired — first-payload capture only so we can inspect at runtime.
-const onFeatures = (e: any) => { captureFirst('FEATURES', e); bumpCount('features'); };
-const onPose = (e: any) => { captureFirst('POSE', e); bumpCount('pose'); };
-const onEmotionHD = (e: any) => { captureFirst('EMOTION_HD', e); bumpCount('emotion_hd'); };
+const onEmotionHD = (e: any) => {
+  captureFirst('EMOTION_HD', e); bumpCount('emotion_hd');
+  const out = e?.detail?.output?.emotion; if (!out) return;
+  for (const k of EMOTIONS) {
+    if (typeof out[k] === 'number') emotion[k] = out[k];
+  }
+  emoSeries.push({ t: elapsed, ...emotion });
+  trim(emoSeries);
+  eventCount++;
+};
+const onPose = (e: any) => {
+  captureFirst('POSE', e); bumpCount('pose');
+  const p = e?.detail?.output?.pose; if (!p) return;
+  for (const k of POSE_AXES) if (typeof p[k] === 'number') pose[k] = p[k];
+  eventCount++;
+};
+// Aggregator: schema unknown — capture only for now; check `firstPayloads.AGGREGATOR` to wire.
 const onAggregator = (e: any) => { captureFirst('AGGREGATOR', e); bumpCount('aggregator'); };
-const onQuality = (e: any) => { captureFirst('QUALITY', e); bumpCount('quality'); };
 
 const LISTENERS: Array<[string, (e: any) => void]> = [
   ['CY_FACE_AROUSAL_VALENCE_RESULT', onAV],
-  ['CY_FACE_EMOTION_RESULT', onEmotion],
   ['CY_FACE_ATTENTION_RESULT', onAttention],
   ['CY_FACE_WISH_RESULT', onWish],
   ['CY_FACE_POSITIVITY_RESULT', onPositivity],
-  ['CY_FACE_FEATURES_RESULT', onFeatures],
   ['CY_FACE_POSE_RESULT', onPose],
   ['CY_FACE_EMOTION_HD_RESULT', onEmotionHD],
   ['CY_DATA_AGGREGATOR_RESULT', onAggregator],
-  ['CY_FACE_QUALITY_RESULT', onQuality],
 ];
 
 function attachListeners() {
@@ -266,16 +303,20 @@ async function bootMorphcast() {
     statusMsg = 'initializing modules…';
     const mods = CY.modules();
     const loader = CY.loader().licenseKey(licenseKey);
+    // Don't reassign: some builds return undefined from maxInputFrameSize() — call for side-effect only.
+    if (typeof (loader as any).maxInputFrameSize === 'function') {
+      (loader as any).maxInputFrameSize(MORPHCAST_MAX_INPUT_FRAME_SIZE);
+    }
     const addIfAvailable = (key: string) => {
       const m = mods[key];
-      if (m) loader.addModule(m.name, {});
-      else console.warn(`[morphcast] module ${key} not in SDK build, skipping`);
+      if (!m) { console.warn(`[morphcast] module ${key} not in SDK build, skipping`); return; }
+      const config = MODULE_CONFIG[key] ?? {};
+      loader.addModule(m.name, config);
     };
     // Skip FACE_AGE / FACE_GENDER / FACE_RACE / ALARM_* by design (ethics + not informative for our use).
+    // FACE_QUALITY isn't in v1.16 build per probe — don't try to add.
     addIfAvailable('FACE_DETECTOR');
-    addIfAvailable('FACE_QUALITY');
     addIfAvailable('FACE_AROUSAL_VALENCE');
-    addIfAvailable('FACE_EMOTION');
     addIfAvailable('FACE_EMOTION_HD');
     addIfAvailable('FACE_ATTENTION');
     addIfAvailable('FACE_WISH');
@@ -316,6 +357,54 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 // via per-step alpha = 1 - 2^(-dt / halfLife). Used to calm the 5-min panels;
 // 30-second panels stay raw so quick changes are still legible.
 const SMOOTH_HALF_LIFE_SEC = 5;
+// Derived meditation metrics — rough conjectures, expect to tune by playtest.
+//   equanimity:   calm + neutral + present.
+//   relaxation:   negative-arousal-leaning, mildly pleasant, attentive (not slothful).
+//   restlessness: high arousal AND distracted.
+//   desire:       wish (kāmacchanda proxy).
+//   sloth:        low attention + low arousal (drowsy / dull).
+//   headMotion:   ||pose||₂ — proxy for fidgeting away from neutral.
+//   hindrance:    mean of restlessness + desire + sloth (no aversion/doubt signal).
+type DerivedInput = {
+  valence: number; arousal: number; attention: number; wish: number;
+  positivity: number; pitch: number; yaw: number; roll: number;
+};
+function deriveAt(t: number, s: DerivedInput): DerivedPoint {
+  const v = s.valence, a = s.arousal, att = s.attention;
+  const eq  = (1 - Math.abs(v)) * (1 - Math.abs(a)) * att;
+  // Hypothesis from user: -0.5 arousal is the meditation sweet spot.
+  const rlx = (1 - Math.abs(a + 0.5)) * (0.5 + v / 2) * att;
+  const rst = Math.max(0, a) * (1 - 0.5 * att);
+  const des = s.wish;
+  // Aversion / ill-will: negative valence + activated (the negative-active quadrant).
+  const avr = Math.max(0, -v) * Math.max(0, a);
+  const slo = (1 - att) * Math.max(0, -a);
+  const hm  = Math.min(1, Math.hypot(s.pitch, s.yaw, s.roll));
+  const hind = (rst + des + avr + slo) / 4;
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  return {
+    t,
+    equanimity:   clamp(eq),
+    relaxation:   clamp(rlx),
+    restlessness: clamp(rst),
+    desire:       clamp(des),
+    aversion:     clamp(avr),
+    sloth:        clamp(slo),
+    headMotion:   clamp(hm),
+    hindrance:    clamp(hind),
+  };
+}
+function computeDerived() {
+  const p = deriveAt(elapsed, {
+    valence: latest.valence, arousal: latest.arousal,
+    attention: latest.attention, wish: latest.wish, positivity: latest.positivity,
+    pitch: pose.pitch, yaw: pose.yaw, roll: pose.roll,
+  });
+  for (const k of DERIVED_KEYS) latestDerived[k] = p[k];
+  derivedSeries.push(p);
+  trim(derivedSeries);
+}
+
 function smoothPoints<P>(points: P[], getT: (p: P) => number, getV: (p: P) => number): TVPoint[] {
   if (points.length === 0) return [];
   const out: TVPoint[] = [];
@@ -356,11 +445,9 @@ function plotFrame(ctx: CanvasRenderingContext2D, plotX: number, plotY: number, 
   ctx.moveTo(plotX, plotY); ctx.lineTo(plotX, plotY + plotH);
   ctx.lineTo(plotX + plotW, plotY + plotH);
   ctx.stroke();
-  pxText(ctx, '1', plotX - 0.08, plotY + 0.12, '0.14px Sora', stone, 'right');
-  pxText(ctx, '0', plotX - 0.08, plotY + plotH - 0.02, '0.14px Sora', stone, 'right');
-  const lbl = windowSec >= 60 ? `−${Math.round(windowSec / 60)}m` : `−${windowSec}s`;
-  pxText(ctx, lbl,   plotX + 0.05,         plotY + plotH + 0.28, '0.16px Sora', stone, 'left');
-  pxText(ctx, 'now', plotX + plotW - 0.05, plotY + plotH + 0.28, '0.16px Sora', stone, 'right');
+  // Axis labels intentionally omitted (saves vertical/horizontal space — y is 0..1,
+  // x is right-now to -window; window appears in panel title).
+  void windowSec;
 }
 
 function windowLabel(sec: number): string {
@@ -369,7 +456,7 @@ function windowLabel(sec: number): string {
 
 function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
   drawPanel(ctx, x, y, w, h, `emotions — ${windowLabel(windowSec)}`);
-  const padL = 0.5, padR = 1.5, padT = 0.7, padB = 0.5;
+  const padL = 0.15, padR = 1.5, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
   const plotY = y + padT;
   const plotW = w - padL - padR;
@@ -410,7 +497,7 @@ function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
 
 function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
   drawPanel(ctx, x, y, w, h, `signals — ${windowLabel(windowSec)}`);
-  const padL = 0.5, padR = 1.7, padT = 0.7, padB = 0.5;
+  const padL = 0.15, padR = 1.7, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
   const plotY = y + padT;
   const plotW = w - padL - padR;
@@ -458,16 +545,9 @@ function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   }
 }
 
-// Stable per-name hue so the same affect keeps its color across frames.
-function affectColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360}, 55%, 48%)`;
-}
-
-function drawRussPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
-  drawPanel(ctx, x, y, w, h, `russell affects — ${windowLabel(windowSec)}`);
-  const padL = 0.5, padR = 1.7, padT = 0.55, padB = 0.45;
+function drawDerivedPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
+  drawPanel(ctx, x, y, w, h, `meditation metrics (derived) — ${windowLabel(windowSec)}`);
+  const padL = 0.15, padR = 1.9, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
   const plotY = y + padT;
   const plotW = w - padL - padR;
@@ -475,55 +555,34 @@ function drawRussPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   plotFrame(ctx, plotX, plotY, plotW, plotH, windowSec);
 
   const t0 = elapsed - windowSec;
-  const visible = russSeries.filter(p => p.t >= t0);
-  if (visible.length === 0) return;
-
-  // Compute peak prob per affect name over the window; render only sparse non-zeros.
-  const peaks: Record<string, number> = {};
-  for (const p of visible) {
-    for (const name in p.affects) {
-      const v = p.affects[name];
-      if (v > (peaks[name] ?? 0)) peaks[name] = v;
-    }
-  }
-  const active = Object.entries(peaks)
-    .filter(([, peak]) => peak >= AFFECT_PEAK_THRESHOLD)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, AFFECT_MAX_LINES)
-    .map(([name]) => name);
-  if (active.length === 0) return;
-
   const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
   const ty = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
-
-  ctx.lineWidth = 0.025;
+  const visible = derivedSeries.filter(p => p.t >= t0);
   const smooth = windowSec >= 60;
-  for (const name of active) {
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = affectColor(name);
+
+  ctx.lineWidth = 0.03;
+  for (const k of DERIVED_KEYS) {
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = DERIVED_COLORS[k];
     if (smooth) {
-      const sm = smoothPoints(visible, p => p.t, p => p.affects[name] ?? 0);
+      const sm = smoothPoints(visible, p => p.t, p => p[k]);
       drawLine(ctx, sm, p => tx(p.t), p => ty(p.v));
     } else {
-      drawLine(ctx, visible, p => tx(p.t), p => ty(p.affects[name] ?? 0));
+      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]));
     }
   }
   ctx.globalAlpha = 1;
 
-  // Legend: sort by current value (latest frame), cap at 8 to fit.
-  const last = visible[visible.length - 1].affects;
-  const legend = active
-    .map(name => ({ name, v: last[name] ?? 0 }))
-    .sort((a, b) => b.v - a.v)
-    .slice(0, 8);
   const legendX = plotX + plotW + 0.12;
+  const items = DERIVED_KEYS.map(k => ({ key: k, color: DERIVED_COLORS[k], v: latestDerived[k] }));
+  items.sort((a, b) => b.v - a.v);
   let ly = plotY + 0.15;
-  for (const it of legend) {
-    ctx.fillStyle = affectColor(it.name);
+  for (const it of items) {
+    ctx.fillStyle = it.color;
     ctx.fillRect(legendX, ly - 0.09, 0.13, 0.09);
-    pxText(ctx, `${it.name} ${(it.v * 100).toFixed(0)}%`,
+    pxText(ctx, `${it.key} ${(it.v * 100).toFixed(0)}%`,
       legendX + 0.18, ly, '0.13px Sora', stone, 'left');
-    ly += 0.18;
+    ly += 0.16;
   }
 }
 
@@ -561,9 +620,9 @@ export const morphcast: Experiment = {
     eventCount = 0;
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
-    russSeries.length = 0;
-    affects = {};
+    derivedSeries.length = 0;
     quadrant = '';
+    pose.pitch = pose.yaw = pose.roll = 0;
     if (licenseKey && status !== 'running' && status !== 'loading') {
       bootMorphcast();
     } else if (!licenseKey) {
@@ -574,6 +633,7 @@ export const morphcast: Experiment = {
 
   update(_face, dt) {
     elapsed += dt;
+    computeDerived();
     exposeForTests();
   },
 
@@ -583,7 +643,7 @@ export const morphcast: Experiment = {
     if (status === 'loading') return drawLoading(ctx, gw, gh);
     if (status === 'error') return drawError(ctx, gw, gh);
 
-    // 3 rows (emotions / signals / russell) × 2 cols (30s / 5min)
+    // 3 rows × 2 cols (30s / 5min): emotion (HD) | signals | derived meditation metrics
     const top = 1.15;
     const colGap = 0.2;
     const rowGap = 0.15;
@@ -595,23 +655,22 @@ export const morphcast: Experiment = {
     const row2 = row1 + rowH + rowGap;
     const row3 = row2 + rowH + rowGap;
 
-    drawEmoPanel    (ctx, leftX,  row1, colW, rowH, WINDOW_30S);
-    drawEmoPanel    (ctx, rightX, row1, colW, rowH, WINDOW_5MIN);
-    drawSignalPanel (ctx, leftX,  row2, colW, rowH, WINDOW_30S);
-    drawSignalPanel (ctx, rightX, row2, colW, rowH, WINDOW_5MIN);
-    drawRussPanel   (ctx, leftX,  row3, colW, rowH, WINDOW_30S);
-    drawRussPanel   (ctx, rightX, row3, colW, rowH, WINDOW_5MIN);
+    drawEmoPanel     (ctx, leftX,  row1, colW, rowH, WINDOW_30S);
+    drawEmoPanel     (ctx, rightX, row1, colW, rowH, WINDOW_5MIN);
+    drawSignalPanel  (ctx, leftX,  row2, colW, rowH, WINDOW_30S);
+    drawSignalPanel  (ctx, rightX, row2, colW, rowH, WINDOW_5MIN);
+    drawDerivedPanel (ctx, leftX,  row3, colW, rowH, WINDOW_30S);
+    drawDerivedPanel (ctx, rightX, row3, colW, rowH, WINDOW_5MIN);
   },
 
   demo() {
     status = 'running';
     latest.attention = 0.78; latest.wish = 0.55; latest.positivity = 0.62;
     latest.valence = 0.4; latest.arousal = 0.2;
-    emotion = { Happy: 0.6, Surprise: 0.1, Neutral: 0.2, Sad: 0.02, Fear: 0.03, Disgust: 0.02, Angry: 0.03 };
+    pose.pitch = 0.05; pose.yaw = -0.1; pose.roll = 0.02;
+    emotion = { Happy: 0.4, Surprise: 0.12, Neutral: 0.32, Sad: 0.06, Fear: 0.04, Disgust: 0.03, Angry: 0.03 };
     quadrant = 'High Control';
     elapsed = WINDOW_5MIN;
-    // Sparse Russell affects: only a handful active, rest near zero — mirrors real data shape.
-    const demoAffects = ['Pleased', 'Calm', 'Content', 'Relaxed', 'Light Hearted', 'Hopeful', 'Interested'];
     const N = 150;
     for (let i = 0; i < N; i++) {
       const t = (i / N) * WINDOW_5MIN;
@@ -623,21 +682,26 @@ export const morphcast: Experiment = {
       signalSeries.arousal.push    ({ t, v: 0.1  + 0.4  * Math.cos(t * 0.04) });
       emoSeries.push({
         t,
-        Happy:    Math.max(0, 0.55 + 0.30 * Math.sin(phase + 0)),
-        Surprise: Math.max(0, 0.10 + 0.10 * Math.sin(phase + 1)),
-        Neutral:  Math.max(0, 0.25 + 0.15 * Math.sin(phase + 2)),
-        Sad:      Math.max(0, 0.05 + 0.05 * Math.sin(phase + 3)),
-        Fear:     Math.max(0, 0.05 + 0.05 * Math.sin(phase + 4)),
-        Disgust:  Math.max(0, 0.05 + 0.05 * Math.sin(phase + 5)),
-        Angry:    Math.max(0, 0.05 + 0.05 * Math.sin(phase + 6)),
+        Happy:    Math.max(0, 0.40 + 0.20 * Math.sin(phase + 0.5)),
+        Surprise: Math.max(0, 0.12 + 0.08 * Math.sin(phase + 1.5)),
+        Neutral:  Math.max(0, 0.32 + 0.15 * Math.sin(phase + 2.5)),
+        Sad:      Math.max(0, 0.08 + 0.08 * Math.sin(phase + 3.5)),
+        Fear:     Math.max(0, 0.05 + 0.04 * Math.sin(phase + 4.5)),
+        Disgust:  Math.max(0, 0.04 + 0.03 * Math.sin(phase + 5.5)),
+        Angry:    Math.max(0, 0.04 + 0.04 * Math.sin(phase + 6.5)),
       });
-      const aff: Record<string, number> = {};
-      demoAffects.forEach((name, idx) => {
-        aff[name] = Math.max(0, 0.45 + 0.35 * Math.sin(phase + idx));
-      });
-      russSeries.push({ t, affects: aff });
+      derivedSeries.push(deriveAt(t, {
+        valence:  0.3  + 0.5  * Math.sin(t * 0.03),
+        arousal:  0.1  + 0.4  * Math.cos(t * 0.04),
+        attention:0.6  + 0.25 * Math.sin(t * 0.04),
+        wish:     0.5  + 0.2  * Math.sin(t * 0.03 + 1),
+        positivity:0.55 + 0.2 * Math.sin(t * 0.025 + 2),
+        pitch:    0.15 * Math.sin(t * 0.07),
+        yaw:      0.25 * Math.sin(t * 0.05 + 0.4),
+        roll:     0.10 * Math.cos(t * 0.06),
+      }));
     }
-    affects = russSeries[russSeries.length - 1].affects;
+    Object.assign(latestDerived, derivedSeries[derivedSeries.length - 1]);
   },
 
   cleanup() {
@@ -646,9 +710,9 @@ export const morphcast: Experiment = {
     detachListeners();
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
     emoSeries.length = 0;
-    russSeries.length = 0;
-    affects = {};
+    derivedSeries.length = 0;
     quadrant = '';
+    pose.pitch = pose.yaw = pose.roll = 0;
     elapsed = 0;
     eventCount = 0;
     for (const k of Object.keys(evtCounts)) delete evtCounts[k];
