@@ -25,10 +25,10 @@ const MORPHCAST_MAX_INPUT_FRAME_SIZE = 640;
 // it's real) but drop instantly (catch lapses early).
 const MODULE_CONFIG: Record<string, Record<string, number>> = {
   FACE_AROUSAL_VALENCE: { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_EMOTION_HD:      { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_ATTENTION:       { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: 1.0, fallSmoothness: 0.0 },
-  FACE_POSITIVITY:      { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_WISH:            { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_EMOTION_HD: { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_ATTENTION: { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: 1.0, fallSmoothness: 0.0 },
+  FACE_POSITIVITY: { smoothness: MORPHCAST_SMOOTHNESS },
+  FACE_WISH: { smoothness: MORPHCAST_SMOOTHNESS },
 };
 
 type Status = 'no-key' | 'loading' | 'running' | 'error';
@@ -45,42 +45,45 @@ const EMOTION_COLORS: Record<Emotion, string> = {
   Angry: rose,
 };
 
-type SignalKey = 'attention' | 'wish' | 'positivity' | 'valence' | 'arousal';
-const SIGNAL_KEYS: SignalKey[] = ['attention', 'wish', 'positivity', 'valence', 'arousal'];
+type SignalKey = 'attention' | 'wish' | 'positivity' | 'valence' | 'arousal' | 'headMotion';
+const SIGNAL_KEYS: SignalKey[] = ['attention', 'wish', 'positivity', 'valence', 'arousal', 'headMotion'];
 const SIGNAL_COLORS: Record<SignalKey, string> = {
   attention: charcoal,
   wish: lavender,
   positivity: honey,
   valence: terra,
   arousal: rose,
+  headMotion: sage,
 };
-// valence/arousal are -1..1; others are 0..1. Plot all on a shared 0..1 axis.
+// Per MorphCast: valence/arousal/positivity are -1..1; attention/wish are 0..1.
+// Plot all on a shared 0..1 axis (midline 0.5 = zero for signed signals).
+const SIGNED: Record<SignalKey, boolean> = {
+  attention: false, wish: false, positivity: true, valence: true, arousal: true,
+  headMotion: false,
+};
 const NORMALIZE: Record<SignalKey, (v: number) => number> = {
   attention: v => v,
   wish: v => v,
-  positivity: v => v,
+  positivity: v => (v + 1) / 2,
   valence: v => (v + 1) / 2,
   arousal: v => (v + 1) / 2,
+  headMotion: v => v,
 };
 // Pose feeds headMotion (derived) only — not rendered as its own signal lines.
 type PoseAxis = 'pitch' | 'yaw' | 'roll';
 const POSE_AXES: PoseAxis[] = ['pitch', 'yaw', 'roll'];
 
 // Derived meditation metrics: rough conjectures, expect to tune w/ playtest.
-// Hypothesis: low arousal (~-0.5) + low |valence| + present attention ≈ equanimity.
 const DERIVED_KEYS = [
-  'equanimity', 'restlessness', 'desire', 'aversion', 'sloth',
-  'headMotion', 'hindrance',
+  'restlessness', 'desire', 'aversion', 'sloth', 'hindrance',
 ] as const;
 type DerivedKey = typeof DERIVED_KEYS[number];
 const DERIVED_COLORS: Record<DerivedKey, string> = {
-  equanimity:   teal,
   restlessness: rose,
-  desire:       lavender,
-  aversion:     charcoal,
-  sloth:        stone,
-  headMotion:   honey,
-  hindrance:    terra,
+  desire: lavender,
+  aversion: sky,
+  sloth: stone,
+  hindrance: charcoal,
 };
 
 let status: Status = 'no-key';
@@ -91,7 +94,7 @@ let stopFn: (() => void) | null = null;
 let listenersAttached = false;
 
 const latest: Record<SignalKey, number> = {
-  attention: 0, wish: 0, positivity: 0, valence: 0, arousal: 0,
+  attention: 0, wish: 0, positivity: 0, valence: 0, arousal: 0, headMotion: 0,
 };
 const pose: Record<PoseAxis, number> = { pitch: 0, yaw: 0, roll: 0 };
 const EMPTY_EMO = (): Record<Emotion, number> =>
@@ -99,8 +102,7 @@ const EMPTY_EMO = (): Record<Emotion, number> =>
 // Using FACE_EMOTION_HD only — standard EMOTION dropped per playtest decision (HD is better calibrated).
 let emotion: Record<Emotion, number> = EMPTY_EMO();
 const latestDerived: Record<DerivedKey, number> = {
-  equanimity: 0, restlessness: 0, desire: 0, aversion: 0,
-  sloth: 0, headMotion: 0, hindrance: 0,
+  restlessness: 0, desire: 0, aversion: 0, sloth: 0, hindrance: 0,
 };
 // Russell quadrant label (kept for header readout; per-affect lines no longer rendered).
 let quadrant = '';
@@ -142,12 +144,13 @@ function exposeForTests() {
 
 const WINDOW_5MIN = 300;
 const WINDOW_30S = 30;
+const WINDOW_1H = 3600;
 let elapsed = 0;
 type TVPoint = { t: number; v: number };
 type EmoPoint = { t: number } & Record<Emotion, number>;
 type DerivedPoint = { t: number } & Record<DerivedKey, number>;
 const signalSeries: Record<SignalKey, TVPoint[]> = {
-  attention: [], wish: [], positivity: [], valence: [], arousal: [],
+  attention: [], wish: [], positivity: [], valence: [], arousal: [], headMotion: [],
 };
 const emoSeries: EmoPoint[] = [];
 const derivedSeries: DerivedPoint[] = [];
@@ -172,17 +175,80 @@ function computeHeadMotion(): number {
     vp += (p.pitch - mp) ** 2; vy += (p.yaw - my) ** 2; vr += (p.roll - mr) ** 2;
   }
   const std = Math.sqrt((vp + vy + vr) / n);
-  return Math.min(1, std * HEAD_MOTION_SCALE);
+  return std * HEAD_MOTION_SCALE;
 }
 function trim(arr: { t: number }[]) {
   const cutoff = elapsed - WINDOW_5MIN;
   while (arr.length && arr[0].t < cutoff) arr.shift();
 }
 
+// --- 24h persistence ---
+// One minute snapshots of every metric, persisted across sessions in
+// localStorage. Each save requires ≥15s of accumulated update() time in the
+// past wall-clock minute (low-quality minutes get skipped, not zeroed).
+const HISTORY_LS_KEY = 'morphcast.history.v1';
+const HISTORY_INTERVAL_SEC = 60;
+const HISTORY_MIN_DATA_SEC = 15;
+// Retain 24h on disk even if we only display 1h, so coming back later still shows context.
+const HISTORY_RETAIN_SEC = 86400;
+type HistorySample = {
+  t: number; // epoch seconds
+  signals: Record<SignalKey, number>;
+  emotion: Record<Emotion, number>;
+  derived: Record<DerivedKey, number>;
+};
+let historySamples: HistorySample[] = [];
+let lastSaveWallSec = 0;
+let elapsedAtLastSave = 0;
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_LS_KEY);
+    if (!raw) { historySamples = []; return; }
+    const parsed = JSON.parse(raw);
+    historySamples = Array.isArray(parsed?.samples) ? parsed.samples : [];
+  } catch { historySamples = []; }
+  trimHistory();
+}
+function trimHistory() {
+  const cutoff = Date.now() / 1000 - HISTORY_RETAIN_SEC;
+  while (historySamples.length && historySamples[0].t < cutoff) historySamples.shift();
+}
+function persistHistory() {
+  try {
+    localStorage.setItem(HISTORY_LS_KEY, JSON.stringify({ samples: historySamples }));
+  } catch { } // QuotaExceeded etc. — drop silently rather than crash the render.
+}
+function maybeSnapshot() {
+  const nowSec = Date.now() / 1000;
+  const dataSec = elapsed - elapsedAtLastSave;
+  const wallSec = nowSec - lastSaveWallSec;
+  if (wallSec < HISTORY_INTERVAL_SEC || dataSec < HISTORY_MIN_DATA_SEC) return;
+  historySamples.push({
+    t: nowSec,
+    signals: { ...latest },
+    emotion: { ...emotion },
+    derived: { ...latestDerived },
+  });
+  trimHistory();
+  persistHistory();
+  lastSaveWallSec = nowSec;
+  elapsedAtLastSave = elapsed;
+}
+// Flatten history samples into the per-metric shapes the panels already expect.
+function historyEmoPoints(): EmoPoint[] {
+  return historySamples.map(s => ({ t: s.t, ...s.emotion }));
+}
+function historyDerivedPoints(): DerivedPoint[] {
+  return historySamples.map(s => ({ t: s.t, ...s.derived }));
+}
+function historySignalPoints(k: SignalKey): TVPoint[] {
+  return historySamples.map(s => ({ t: s.t, v: s.signals[k] }));
+}
+
 // Vite HMR — the SDK is a singleton, so tear down before module replacement.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    try { stopFn?.(); } catch {}
+    try { stopFn?.(); } catch { }
     stopFn = null;
     detachListeners();
     status = 'no-key';
@@ -256,8 +322,8 @@ const onPositivity = (e: any) => {
   // Field name not in publicly indexed docs — try plausible scalars, capture raw via firstPayloads.
   const p = typeof out?.positivity === 'number' ? out.positivity
     : typeof out?.score === 'number' ? out.score
-    : typeof out?.value === 'number' ? out.value
-    : undefined;
+      : typeof out?.value === 'number' ? out.value
+        : undefined;
   if (typeof p === 'number') {
     latest.positivity = p;
     signalSeries.positivity.push({ t: elapsed, v: p });
@@ -358,7 +424,7 @@ async function bootMorphcast() {
     status = 'error';
     statusMsg = err?.message ?? String(err);
     detachListeners();
-    try { stopFn?.(); } catch {}
+    try { stopFn?.(); } catch { }
     stopFn = null;
   }
   exposeForTests();
@@ -380,44 +446,62 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 // 30-second panels stay raw so quick changes are still legible.
 const SMOOTH_HALF_LIFE_SEC = 5;
 // Derived meditation metrics — rough conjectures, expect to tune by playtest.
-//   equanimity:   calm + neutral + present.
 //   restlessness: high arousal — 0 below 0.5, ramps to 1 at 1.
 //   desire:       wish (kāmacchanda proxy).
 //   aversion:     max(anger%, disgust%, negative-valence) — whichever channel sees it.
 //   sloth:        deep low arousal — 0 above -0.5, ramps to 1 at -1.
-//   headMotion:   rolling std-dev of pose over ~3s — fidgeting + slow drift, not displacement.
-//   hindrance:    max of restlessness, desire, aversion, sloth (whichever's loudest).
+//   hindrance:    softmax-weighted blend of the four — at β=4 it's between
+//                 max (β→∞) and mean (β→0), leaning toward whichever's loudest.
+// (headMotion is a signal now, not derived — but it feeds into restlessness as
+//  fidgeting is the body's version of an arousal spike.)
+// Softmax-weighted blend: Σ xᵢ·exp(β·xᵢ) / Σ exp(β·xᵢ). β=∞ → max, β=0 → mean.
+// Always lies in [min(x), max(x)] (it's a weighted average, with weights biased
+// toward larger entries).
+function softmaxBlend(xs: number[], beta: number): number {
+  let num = 0, den = 0;
+  for (const x of xs) {
+    const w = Math.exp(beta * x);
+    num += x * w;
+    den += w;
+  }
+  return den > 0 ? num / den : 0;
+}
+
 type DerivedInput = {
   valence: number; arousal: number; attention: number; wish: number;
   positivity: number; headMotion: number;
   anger: number; disgust: number;
 };
 function deriveAt(t: number, s: DerivedInput): DerivedPoint {
-  const v = s.valence, a = s.arousal, att = s.attention;
-  const eq  = (1 - Math.abs(v)) * (1 - Math.abs(a)) * att;
-  const rst = 2 * a - 1;
+  const a = s.arousal;
+  // No defensive clamping — if a metric drifts out of [0,1] that's a real bug
+  // (in the formula or upstream signal) and we want to see it, not hide it.
+  // Inner Math.max(0, …) is a relu (lerp floor that defines the metric); the
+  // outer softmaxBlend is the aggregation, replacing what would otherwise be max/mean.
+  const rst = softmaxBlend([s.headMotion, Math.max(0, 2 * a - 1)], 4);
   const des = s.wish;
-  const avr = Math.max(s.anger, s.disgust, Math.max(0, -v));
-  const slo = -2 * a - 1;
-  const clamp = (x: number) => Math.max(0, Math.min(1, x));
-  const hind = Math.max(clamp(rst), clamp(des), clamp(avr), clamp(slo));
+  const avr = softmaxBlend([s.anger, s.disgust], 4);
+  const slo = Math.max(0, -2 * a - 1);
+  const hind = softmaxBlend([rst, des, avr, slo], 4);
   return {
     t,
-    equanimity:   clamp(eq),
-    restlessness: clamp(rst),
-    desire:       clamp(des),
-    aversion:     clamp(avr),
-    sloth:        clamp(slo),
-    headMotion:   clamp(s.headMotion),
-    hindrance:    clamp(hind),
+    restlessness: rst,
+    desire: des,
+    aversion: avr,
+    sloth: slo,
+    hindrance: hind,
   };
 }
 function computeDerived() {
   poseBuffer.push({ t: elapsed, pitch: pose.pitch, yaw: pose.yaw, roll: pose.roll });
+  const hm = computeHeadMotion();
+  latest.headMotion = hm;
+  signalSeries.headMotion.push({ t: elapsed, v: hm });
+  trim(signalSeries.headMotion);
   const p = deriveAt(elapsed, {
     valence: latest.valence, arousal: latest.arousal,
     attention: latest.attention, wish: latest.wish, positivity: latest.positivity,
-    headMotion: computeHeadMotion(),
+    headMotion: hm,
     anger: emotion.Angry, disgust: emotion.Disgust,
   });
   for (const k of DERIVED_KEYS) latestDerived[k] = p[k];
@@ -443,14 +527,32 @@ function smoothPoints<P>(points: P[], getT: (p: P) => number, getV: (p: P) => nu
   return out;
 }
 
-function drawLine<P>(ctx: CanvasRenderingContext2D, pts: P[], getX: (p: P) => number, getY: (p: P) => number) {
-  let started = false;
+// Break the path when two consecutive samples are >maxGapX apart on the x axis
+// (e.g. session gap, dropped events). Avoids drawing a misleading straight line
+// across long stretches with no data.
+function drawLine<P>(
+  ctx: CanvasRenderingContext2D,
+  pts: P[],
+  getX: (p: P) => number,
+  getY: (p: P) => number,
+  maxGapX = Infinity,
+) {
+  let prevX: number | null = null;
+  let inPath = false;
   ctx.beginPath();
   for (const p of pts) {
     const xx = getX(p); const yy = getY(p);
-    if (!started) { ctx.moveTo(xx, yy); started = true; } else ctx.lineTo(xx, yy);
+    if (prevX === null || xx - prevX > maxGapX) {
+      if (inPath) ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(xx, yy);
+      inPath = true;
+    } else {
+      ctx.lineTo(xx, yy);
+    }
+    prevX = xx;
   }
-  if (started) ctx.stroke();
+  if (inPath) ctx.stroke();
 }
 
 function plotFrame(ctx: CanvasRenderingContext2D, plotX: number, plotY: number, plotW: number, plotH: number, windowSec: number) {
@@ -471,10 +573,12 @@ function plotFrame(ctx: CanvasRenderingContext2D, plotX: number, plotY: number, 
 }
 
 function windowLabel(sec: number): string {
-  return sec >= 60 ? `last ${sec / 60} min` : `last ${sec}s`;
+  if (sec >= 3600) return `last ${sec / 3600} h`;
+  if (sec >= 60) return `last ${sec / 60} min`;
+  return `last ${sec}s`;
 }
 
-function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
+function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number, series: EmoPoint[], tNow: number) {
   drawPanel(ctx, x, y, w, h, `emotions — ${windowLabel(windowSec)}`);
   const padL = 0.15, padR = 1.5, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
@@ -483,24 +587,30 @@ function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   const plotH = h - padT - padB;
   plotFrame(ctx, plotX, plotY, plotW, plotH, windowSec);
 
-  const t0 = elapsed - windowSec;
+  const t0 = tNow - windowSec;
   const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
-  const ty = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
-  const visible = emoSeries.filter(p => p.t >= t0);
+  const ty = (v: number) => plotY + plotH - v * plotH;
+  const visible = series.filter(p => p.t >= t0);
   const smooth = windowSec >= 60;
+  const maxGap = plotW * 0.1;
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plotX, plotY, plotW, plotH);
+  ctx.clip();
   ctx.lineWidth = 0.03;
   for (const k of EMOTIONS) {
     ctx.globalAlpha = 0.75;
     ctx.strokeStyle = EMOTION_COLORS[k];
     if (smooth) {
       const sm = smoothPoints(visible, p => p.t, p => p[k]);
-      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v));
+      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v), maxGap);
     } else {
-      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]));
+      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]), maxGap);
     }
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
 
   const legendX = plotX + plotW + 0.15;
   const items = EMOTIONS.map(k => ({ key: k, color: EMOTION_COLORS[k], v: emotion[k] }));
@@ -515,7 +625,7 @@ function drawEmoPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   }
 }
 
-function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
+function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number, sourceFor: (k: SignalKey) => TVPoint[], tNow: number) {
   drawPanel(ctx, x, y, w, h, `signals — ${windowLabel(windowSec)}`);
   const padL = 0.15, padR = 1.7, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
@@ -532,22 +642,28 @@ function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.lineTo(plotX + plotW, plotY + plotH / 2);
   ctx.stroke();
 
-  const t0 = elapsed - windowSec;
+  const t0 = tNow - windowSec;
   const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
-  const ty01 = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
+  const ty01 = (v: number) => plotY + plotH - v * plotH;
+  const maxGap = plotW * 0.1;
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plotX, plotY, plotW, plotH);
+  ctx.clip();
   ctx.lineWidth = 0.035;
   const smooth = windowSec >= 60;
   for (const k of SIGNAL_KEYS) {
     ctx.globalAlpha = 0.85;
     ctx.strokeStyle = SIGNAL_COLORS[k];
-    const visible = signalSeries[k].filter(p => p.t >= t0);
+    const visible = sourceFor(k).filter(p => p.t >= t0);
     const pts = smooth
       ? smoothPoints(visible, p => p.t, p => NORMALIZE[k](p.v))
       : visible.map(p => ({ t: p.t, v: NORMALIZE[k](p.v) }));
-    drawLine(ctx, pts, p => tx(p.t), p => ty01(p.v));
+    drawLine(ctx, pts, p => tx(p.t), p => ty01(p.v), maxGap);
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
 
   const legendX = plotX + plotW + 0.15;
   const items = SIGNAL_KEYS.map(k => ({ key: k, color: SIGNAL_COLORS[k], plot: NORMALIZE[k](latest[k]) }));
@@ -557,15 +673,16 @@ function drawSignalPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w:
     ctx.fillStyle = it.color;
     ctx.fillRect(legendX, ly - 0.1, 0.14, 0.1);
     const raw = latest[it.key];
-    const display = it.key === 'valence' || it.key === 'arousal'
-      ? raw.toFixed(2)
-      : `${(raw * 100).toFixed(0)}%`;
+    const pct = raw * 100;
+    const display = SIGNED[it.key]
+      ? `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`
+      : `${pct.toFixed(0)}%`;
     pxText(ctx, `${it.key} ${display}`, legendX + 0.2, ly, '0.14px Sora', stone, 'left');
     ly += 0.2;
   }
 }
 
-function drawDerivedPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number) {
+function drawDerivedPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, windowSec: number, series: DerivedPoint[], tNow: number) {
   drawPanel(ctx, x, y, w, h, `meditation metrics (derived) — ${windowLabel(windowSec)}`);
   const padL = 0.15, padR = 1.9, padT = 0.55, padB = 0.15;
   const plotX = x + padL;
@@ -574,24 +691,30 @@ function drawDerivedPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w
   const plotH = h - padT - padB;
   plotFrame(ctx, plotX, plotY, plotW, plotH, windowSec);
 
-  const t0 = elapsed - windowSec;
+  const t0 = tNow - windowSec;
   const tx = (t: number) => plotX + ((t - t0) / windowSec) * plotW;
-  const ty = (v: number) => plotY + plotH - Math.max(0, Math.min(1, v)) * plotH;
-  const visible = derivedSeries.filter(p => p.t >= t0);
+  const ty = (v: number) => plotY + plotH - v * plotH;
+  const visible = series.filter(p => p.t >= t0);
   const smooth = windowSec >= 60;
+  const maxGap = plotW * 0.1;
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plotX, plotY, plotW, plotH);
+  ctx.clip();
   ctx.lineWidth = 0.03;
   for (const k of DERIVED_KEYS) {
     ctx.globalAlpha = 0.78;
     ctx.strokeStyle = DERIVED_COLORS[k];
     if (smooth) {
       const sm = smoothPoints(visible, p => p.t, p => p[k]);
-      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v));
+      drawLine(ctx, sm, p => tx(p.t), p => ty(p.v), maxGap);
     } else {
-      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]));
+      drawLine(ctx, visible, p => tx(p.t), p => ty(p[k]), maxGap);
     }
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
 
   const legendX = plotX + plotW + 0.12;
   const items = DERIVED_KEYS.map(k => ({ key: k, color: DERIVED_COLORS[k], v: latestDerived[k] }));
@@ -644,6 +767,9 @@ export const morphcast: Experiment = {
     poseBuffer.length = 0;
     quadrant = '';
     pose.pitch = pose.yaw = pose.roll = 0;
+    loadHistory();
+    lastSaveWallSec = 0;
+    elapsedAtLastSave = 0;
     if (licenseKey && status !== 'running' && status !== 'loading') {
       bootMorphcast();
     } else if (!licenseKey) {
@@ -655,6 +781,7 @@ export const morphcast: Experiment = {
   update(_face, dt) {
     elapsed += dt;
     computeDerived();
+    maybeSnapshot();
     exposeForTests();
   },
 
@@ -664,24 +791,34 @@ export const morphcast: Experiment = {
     if (status === 'loading') return drawLoading(ctx, gw, gh);
     if (status === 'error') return drawError(ctx, gw, gh);
 
-    // 3 rows × 2 cols (30s / 5min): emotion (HD) | signals | derived meditation metrics
+    // 3 rows × 3 cols (30s / 5min / 24h history): emotion (HD) | signals | derived.
     const top = 1.15;
     const colGap = 0.2;
     const rowGap = 0.15;
-    const colW = (gw - 0.4 - colGap) / 2;
+    const colW = (gw - 0.4 - 2 * colGap) / 3;
     const rowH = (gh - top - 0.25 - 2 * rowGap) / 3;
-    const leftX = 0.2;
-    const rightX = leftX + colW + colGap;
+    const col1X = 0.2;
+    const col2X = col1X + colW + colGap;
+    const col3X = col2X + colW + colGap;
     const row1 = top;
     const row2 = row1 + rowH + rowGap;
     const row3 = row2 + rowH + rowGap;
 
-    drawEmoPanel     (ctx, leftX,  row1, colW, rowH, WINDOW_30S);
-    drawEmoPanel     (ctx, rightX, row1, colW, rowH, WINDOW_5MIN);
-    drawSignalPanel  (ctx, leftX,  row2, colW, rowH, WINDOW_30S);
-    drawSignalPanel  (ctx, rightX, row2, colW, rowH, WINDOW_5MIN);
-    drawDerivedPanel (ctx, leftX,  row3, colW, rowH, WINDOW_30S);
-    drawDerivedPanel (ctx, rightX, row3, colW, rowH, WINDOW_5MIN);
+    const liveSig = (k: SignalKey) => signalSeries[k];
+    const histSig = (k: SignalKey) => historySignalPoints(k);
+    const histEmo = historyEmoPoints();
+    const histDer = historyDerivedPoints();
+    const nowEpoch = Date.now() / 1000;
+
+    drawEmoPanel(ctx, col1X, row1, colW, rowH, WINDOW_30S, emoSeries, elapsed);
+    drawEmoPanel(ctx, col2X, row1, colW, rowH, WINDOW_5MIN, emoSeries, elapsed);
+    drawEmoPanel(ctx, col3X, row1, colW, rowH, WINDOW_1H, histEmo, nowEpoch);
+    drawSignalPanel(ctx, col1X, row2, colW, rowH, WINDOW_30S, liveSig, elapsed);
+    drawSignalPanel(ctx, col2X, row2, colW, rowH, WINDOW_5MIN, liveSig, elapsed);
+    drawSignalPanel(ctx, col3X, row2, colW, rowH, WINDOW_1H, histSig, nowEpoch);
+    drawDerivedPanel(ctx, col1X, row3, colW, rowH, WINDOW_30S, derivedSeries, elapsed);
+    drawDerivedPanel(ctx, col2X, row3, colW, rowH, WINDOW_5MIN, derivedSeries, elapsed);
+    drawDerivedPanel(ctx, col3X, row3, colW, rowH, WINDOW_1H, histDer, nowEpoch);
   },
 
   demo() {
@@ -696,37 +833,38 @@ export const morphcast: Experiment = {
     for (let i = 0; i < N; i++) {
       const t = (i / N) * WINDOW_5MIN;
       const phase = t * 0.05;
-      signalSeries.attention.push  ({ t, v: 0.6  + 0.25 * Math.sin(t * 0.04) });
-      signalSeries.wish.push       ({ t, v: 0.5  + 0.2  * Math.sin(t * 0.03 + 1) });
-      signalSeries.positivity.push ({ t, v: 0.55 + 0.2  * Math.sin(t * 0.025 + 2) });
-      signalSeries.valence.push    ({ t, v: 0.3  + 0.5  * Math.sin(t * 0.03) });
-      signalSeries.arousal.push    ({ t, v: 0.1  + 0.4  * Math.cos(t * 0.04) });
+      signalSeries.attention.push({ t, v: 0.6 + 0.25 * Math.sin(t * 0.04) });
+      signalSeries.wish.push({ t, v: 0.5 + 0.2 * Math.sin(t * 0.03 + 1) });
+      signalSeries.positivity.push({ t, v: 0.55 + 0.2 * Math.sin(t * 0.025 + 2) });
+      signalSeries.valence.push({ t, v: 0.3 + 0.5 * Math.sin(t * 0.03) });
+      signalSeries.arousal.push({ t, v: 0.1 + 0.4 * Math.cos(t * 0.04) });
+      signalSeries.headMotion.push({ t, v: Math.max(0, 0.3 + 0.3 * Math.sin(t * 0.08)) });
       emoSeries.push({
         t,
-        Happy:    Math.max(0, 0.40 + 0.20 * Math.sin(phase + 0.5)),
+        Happy: Math.max(0, 0.40 + 0.20 * Math.sin(phase + 0.5)),
         Surprise: Math.max(0, 0.12 + 0.08 * Math.sin(phase + 1.5)),
-        Neutral:  Math.max(0, 0.32 + 0.15 * Math.sin(phase + 2.5)),
-        Sad:      Math.max(0, 0.08 + 0.08 * Math.sin(phase + 3.5)),
-        Fear:     Math.max(0, 0.05 + 0.04 * Math.sin(phase + 4.5)),
-        Disgust:  Math.max(0, 0.04 + 0.03 * Math.sin(phase + 5.5)),
-        Angry:    Math.max(0, 0.04 + 0.04 * Math.sin(phase + 6.5)),
+        Neutral: Math.max(0, 0.32 + 0.15 * Math.sin(phase + 2.5)),
+        Sad: Math.max(0, 0.08 + 0.08 * Math.sin(phase + 3.5)),
+        Fear: Math.max(0, 0.05 + 0.04 * Math.sin(phase + 4.5)),
+        Disgust: Math.max(0, 0.04 + 0.03 * Math.sin(phase + 5.5)),
+        Angry: Math.max(0, 0.04 + 0.04 * Math.sin(phase + 6.5)),
       });
       derivedSeries.push(deriveAt(t, {
-        valence:  0.3  + 0.5  * Math.sin(t * 0.03),
-        arousal:  0.1  + 0.4  * Math.cos(t * 0.04),
-        attention:0.6  + 0.25 * Math.sin(t * 0.04),
-        wish:     0.5  + 0.2  * Math.sin(t * 0.03 + 1),
-        positivity:0.55 + 0.2 * Math.sin(t * 0.025 + 2),
+        valence: 0.3 + 0.5 * Math.sin(t * 0.03),
+        arousal: 0.1 + 0.4 * Math.cos(t * 0.04),
+        attention: 0.6 + 0.25 * Math.sin(t * 0.04),
+        wish: 0.5 + 0.2 * Math.sin(t * 0.03 + 1),
+        positivity: 0.55 + 0.2 * Math.sin(t * 0.025 + 2),
         headMotion: Math.max(0, 0.3 + 0.3 * Math.sin(t * 0.08)),
-        anger:    Math.max(0, 0.04 + 0.04 * Math.sin(t * 0.05 + 6.5)),
-        disgust:  Math.max(0, 0.04 + 0.03 * Math.sin(t * 0.05 + 5.5)),
+        anger: Math.max(0, 0.04 + 0.04 * Math.sin(t * 0.05 + 6.5)),
+        disgust: Math.max(0, 0.04 + 0.03 * Math.sin(t * 0.05 + 5.5)),
       }));
     }
     Object.assign(latestDerived, derivedSeries[derivedSeries.length - 1]);
   },
 
   cleanup() {
-    try { stopFn?.(); } catch {}
+    try { stopFn?.(); } catch { }
     stopFn = null;
     detachListeners();
     for (const k of SIGNAL_KEYS) signalSeries[k].length = 0;
