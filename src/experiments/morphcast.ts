@@ -26,7 +26,7 @@ const MORPHCAST_MAX_INPUT_FRAME_SIZE = 640;
 const MODULE_CONFIG: Record<string, Record<string, number>> = {
   FACE_AROUSAL_VALENCE: { smoothness: MORPHCAST_SMOOTHNESS },
   FACE_EMOTION_HD: { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_ATTENTION: { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: 1.0, fallSmoothness: 0.0 },
+  FACE_ATTENTION: { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: MORPHCAST_SMOOTHNESS, fallSmoothness: 0.0 },
   FACE_POSITIVITY: { smoothness: MORPHCAST_SMOOTHNESS },
   FACE_WISH: { smoothness: MORPHCAST_SMOOTHNESS },
 };
@@ -104,8 +104,88 @@ let emotion: Record<Emotion, number> = EMPTY_EMO();
 const latestDerived: Record<DerivedKey, number> = {
   restlessness: 0, desire: 0, aversion: 0, sloth: 0, hindrance: 0,
 };
-// Russell quadrant label (kept for header readout; per-affect lines no longer rendered).
+// Russell quadrant label — kept for the dump (still in firstPayloads + window.__morphcast),
+// no longer shown in the header. The header now shows a derived emoji instead.
 let quadrant = '';
+
+// Two-tier emoji per Ekman emotion: strong (≥0.7 confidence) vs mild (0.4–0.7).
+// If no emotion clears 0.4, fall through to a Russell V/A zone lookup.
+const STRONG_EMOJI: Record<Emotion, string> = {
+  Happy:    '😄',
+  Sad:      '😭',
+  Angry:    '😡',
+  Surprise: '🤯',
+  Fear:     '😱',
+  Disgust:  '🤮',
+  Neutral:  '😐',
+};
+const MILD_EMOJI: Record<Emotion, string> = {
+  Happy:    '🙂',
+  Sad:      '😢',
+  Angry:    '😠',
+  Surprise: '😲',
+  Fear:     '😨',
+  Disgust:  '🤢',
+  Neutral:  '😐',
+};
+const EMOTION_STRONG_T = 0.7;
+const EMOTION_MILD_T   = 0.4;
+type EmoSnap = { emo: Record<Emotion, number>; valence: number; arousal: number };
+function emojiFromSnap(s: EmoSnap): string {
+  // Dominant emotion among the six non-neutral Ekman categories.
+  let best: Emotion = 'Neutral';
+  let bestVal = -Infinity;
+  for (const e of EMOTIONS) {
+    if (e === 'Neutral') continue;
+    if (s.emo[e] > bestVal) { bestVal = s.emo[e]; best = e; }
+  }
+  if (bestVal >= EMOTION_STRONG_T) return STRONG_EMOJI[best];
+  if (bestVal >= EMOTION_MILD_T)   return MILD_EMOJI[best];
+  // V/A fallback when nothing on the Ekman wheel is loud enough.
+  const v = s.valence, a = s.arousal;
+  if (a < -0.6)                return '😴';
+  if (a >  0.5 && v >  0.3)    return '🤩';
+  if (v < -0.3)                return '😔';
+  if (v >  0.3)                return '😌';
+  return '😐';
+}
+function deriveEmoji(): string {
+  return emojiFromSnap({ emo: emotion, valence: latest.valence, arousal: latest.arousal });
+}
+// Binary-search nearest point by t. Series is sorted ascending.
+function nearestByT<T extends { t: number }>(arr: T[], t: number): T | null {
+  if (arr.length === 0) return null;
+  let lo = 0, hi = arr.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid].t < t) lo = mid + 1; else hi = mid;
+  }
+  const a = arr[Math.max(0, lo - 1)];
+  const b = arr[lo];
+  return Math.abs(a.t - t) < Math.abs(b.t - t) ? a : b;
+}
+// Sample N evenly-spaced emojis across [tStart, tEnd] via a snapshot lookup.
+// Returns null at sample times with no nearby data (within half a slot width),
+// so empty regions stay visually empty instead of repeating the nearest emoji.
+function sampleEmojiRow(
+  tStart: number, tEnd: number, n: number,
+  snapAt: (t: number, maxGap: number) => EmoSnap | null,
+): (string | null)[] {
+  const slotW = (tEnd - tStart) / n;
+  const maxGap = slotW / 2;
+  const out: (string | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = tStart + (i + 0.5) * slotW;
+    const s = snapAt(t, maxGap);
+    out.push(s ? emojiFromSnap(s) : null);
+  }
+  return out;
+}
+function emoPointToRecord(p: EmoPoint): Record<Emotion, number> {
+  const r = EMPTY_EMO();
+  for (const e of EMOTIONS) r[e] = p[e];
+  return r;
+}
 
 let eventCount = 0;
 const evtCounts: Record<string, number> = {};
@@ -161,6 +241,12 @@ const HEAD_MOTION_WINDOW_SEC = 3;
 // Pose values are radians-ish (~0..0.3 in normal movement); std-dev × 5 maps
 // active fidgeting into a roughly 0..1 visible range.
 const HEAD_MOTION_SCALE = 5;
+// Calibration: meditator-still still reads ~15% from sensor noise alone, and
+// even vigorous fidgeting rarely pegs the line. Subtract a dead zone and
+// compress the remaining range so the line sits low when calm and reaches
+// ~40% in active movement.
+const HEAD_MOTION_DEAD_ZONE = 0.15;
+const HEAD_MOTION_MAX_OUT = 0.40;
 const poseBuffer: Array<{ t: number; pitch: number; yaw: number; roll: number }> = [];
 function computeHeadMotion(): number {
   const cutoff = elapsed - HEAD_MOTION_WINDOW_SEC;
@@ -175,7 +261,8 @@ function computeHeadMotion(): number {
     vp += (p.pitch - mp) ** 2; vy += (p.yaw - my) ** 2; vr += (p.roll - mr) ** 2;
   }
   const std = Math.sqrt((vp + vy + vr) / n);
-  return std * HEAD_MOTION_SCALE;
+  const raw = std * HEAD_MOTION_SCALE;
+  return Math.max(0, (raw - HEAD_MOTION_DEAD_ZONE) * HEAD_MOTION_MAX_OUT / (1 - HEAD_MOTION_DEAD_ZONE));
 }
 function trim(arr: { t: number }[]) {
   const cutoff = elapsed - WINDOW_5MIN;
@@ -731,10 +818,37 @@ function drawDerivedPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w
 
 function drawHeader(ctx: CanvasRenderingContext2D, gw: number) {
   pxText(ctx, 'morphcast playground', gw / 2, 0.55, '0.45px Fredoka', charcoal, 'center');
-  const sub = quadrant
-    ? `russell quadrant: ${quadrant.toLowerCase()}`
-    : 'emotion AI from webcam — exploring attention & affect';
-  pxText(ctx, sub, gw / 2, 0.88, '0.2px Sora', stone, 'center');
+  pxText(ctx, deriveEmoji(), gw / 2, 0.95, '0.5px Sora', charcoal, 'center');
+}
+// Minimal timeline strip of emojis above a column. Skips sample slots with no data.
+function drawEmojiRow(
+  ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number,
+  emojis: (string | null)[],
+) {
+  const n = emojis.length;
+  const step = w / n;
+  for (let i = 0; i < n; i++) {
+    const e = emojis[i];
+    if (!e) continue;
+    pxText(ctx, e, x + step * (i + 0.5), y + h * 0.7, '0.35px Sora', charcoal, 'center');
+  }
+}
+const EMOJI_ROW_SAMPLES = 10;
+function liveSnapAt(t: number, maxGap: number): EmoSnap | null {
+  const e = nearestByT(emoSeries, t);
+  const v = nearestByT(signalSeries.valence, t);
+  const a = nearestByT(signalSeries.arousal, t);
+  if (!e || !v || !a) return null;
+  if (Math.abs(e.t - t) > maxGap) return null;
+  if (Math.abs(v.t - t) > maxGap) return null;
+  if (Math.abs(a.t - t) > maxGap) return null;
+  return { emo: emoPointToRecord(e), valence: v.v, arousal: a.v };
+}
+function historySnapAt(t: number, maxGap: number): EmoSnap | null {
+  const s = nearestByT(historySamples, t);
+  if (!s) return null;
+  if (Math.abs(s.t - t) > maxGap) return null;
+  return { emo: s.emotion, valence: s.signals.valence, arousal: s.signals.arousal };
 }
 
 function drawNoKey(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
@@ -791,8 +905,11 @@ export const morphcast: Experiment = {
     if (status === 'loading') return drawLoading(ctx, gw, gh);
     if (status === 'error') return drawError(ctx, gw, gh);
 
-    // 3 rows × 3 cols (30s / 5min / 24h history): emotion (HD) | signals | derived.
-    const top = 1.15;
+    // 3 rows × 3 cols (30s / 5min / 1h history): emotion (HD) | signals | derived.
+    // Plus a thin emoji timeline strip above each column.
+    const emojiRowH = 0.45;
+    const emojiRowY = 1.15;
+    const top = emojiRowY + emojiRowH + 0.05;
     const colGap = 0.2;
     const rowGap = 0.15;
     const colW = (gw - 0.4 - 2 * colGap) / 3;
@@ -809,6 +926,17 @@ export const morphcast: Experiment = {
     const histEmo = historyEmoPoints();
     const histDer = historyDerivedPoints();
     const nowEpoch = Date.now() / 1000;
+
+    // Emoji timeline strips — aligned with the plot region of the emo panel directly
+    // below (padL/padR mirror drawEmoPanel) so emoji x positions match chart x ticks.
+    const emojiPadL = 0.15, emojiPadR = 1.5;
+    const plotW = colW - emojiPadL - emojiPadR;
+    drawEmojiRow(ctx, col1X + emojiPadL, emojiRowY, plotW, emojiRowH,
+      sampleEmojiRow(elapsed - WINDOW_30S,  elapsed,  EMOJI_ROW_SAMPLES, liveSnapAt));
+    drawEmojiRow(ctx, col2X + emojiPadL, emojiRowY, plotW, emojiRowH,
+      sampleEmojiRow(elapsed - WINDOW_5MIN, elapsed,  EMOJI_ROW_SAMPLES, liveSnapAt));
+    drawEmojiRow(ctx, col3X + emojiPadL, emojiRowY, plotW, emojiRowH,
+      sampleEmojiRow(nowEpoch - WINDOW_1H,  nowEpoch, EMOJI_ROW_SAMPLES, historySnapAt));
 
     drawEmoPanel(ctx, col1X, row1, colW, rowH, WINDOW_30S, emoSeries, elapsed);
     drawEmoPanel(ctx, col2X, row1, colW, rowH, WINDOW_5MIN, emoSeries, elapsed);
