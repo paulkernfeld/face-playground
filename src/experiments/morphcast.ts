@@ -11,25 +11,17 @@ import { charcoal, stone, rose, honey, sage, terra, sky, lavender, teal } from '
 const MPH_TOOLS_URL = "https://sdk.morphcast.com/mphtools/v1.1/mphtools.js";
 const AI_SDK_URL = "https://ai-sdk.morphcast.com/v1.16/ai-sdk.js";
 
-// Smoothness param accepted by most MorphCast modules. SDK treats 1.0 as
-// "100% previous value" (signal freezes — never updates), so cap just under at
-// 0.95: heavy smoothing for the meditation use case, but values still breathe.
-// (We also EWMA-smooth ourselves for the 5-min view; raw module smoothing is cheap.)
-const MORPHCAST_SMOOTHNESS = 0.95;
 // HD emotion model benefits from ≥640px input — keep default downscale off so
 // the bigger model isn't wasted on a small frame.
 const MORPHCAST_MAX_INPUT_FRAME_SIZE = 640;
-// Per-module config. Only modules that accept `smoothness` get it — FACE_DETECTOR,
-// FACE_POSE, DATA_AGGREGATOR reject unknown keys and silently fail to start (no
-// events fire). Attention is asymmetric: rise slowly (don't claim presence until
-// it's real) but drop instantly (catch lapses early).
-const MODULE_CONFIG: Record<string, Record<string, number>> = {
-  FACE_AROUSAL_VALENCE: { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_EMOTION_HD: { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_ATTENTION: { smoothness: MORPHCAST_SMOOTHNESS, riseSmoothness: MORPHCAST_SMOOTHNESS, fallSmoothness: 0.0 },
-  FACE_POSITIVITY: { smoothness: MORPHCAST_SMOOTHNESS },
-  FACE_WISH: { smoothness: MORPHCAST_SMOOTHNESS },
-};
+// Intentionally NO per-module smoothness config. Two reasons:
+//   1. The SDK's `smoothness: 1.0` semantics ("100% previous value") froze the
+//      AV signal and `riseSmoothness: 1.0` froze attention — silent failures
+//      that cost real debugging time.
+//   2. We want raw signals on disk so future tweaks to smoothing reshape past
+//      history too. All smoothing happens on our side (see smoothPoints in the
+//      ≥60s panels).
+// Modules are added bare; the SDK uses its built-in defaults.
 
 type Status = 'no-key' | 'loading' | 'running' | 'error';
 
@@ -308,11 +300,14 @@ const HISTORY_INTERVAL_SEC = 60;
 const HISTORY_MIN_DATA_SEC = 15;
 // Retain 24h on disk even if we only display 1h, so coming back later still shows context.
 const HISTORY_RETAIN_SEC = 86400;
+// Raw-signals-only on disk by design — derived metrics (restlessness, hindrance,
+// emoji, etc.) get recomputed at render time so formula tweaks reshape past
+// history too. Old payloads with a `derived` field are tolerated (extra fields
+// just ride along until trimmed); we never read or write it.
 type HistorySample = {
   t: number; // epoch seconds
   signals: Record<SignalKey, number>;
   emotion: Record<Emotion, number>;
-  derived: Record<DerivedKey, number>;
 };
 let historySamples: HistorySample[] = [];
 let lastSaveWallSec = 0;
@@ -344,7 +339,6 @@ function maybeSnapshot() {
     t: nowSec,
     signals: { ...latest },
     emotion: { ...emotion },
-    derived: { ...latestDerived },
   });
   trimHistory();
   persistHistory();
@@ -356,7 +350,16 @@ function historyEmoPoints(): EmoPoint[] {
   return historySamples.map(s => ({ t: s.t, ...s.emotion }));
 }
 function historyDerivedPoints(): DerivedPoint[] {
-  return historySamples.map(s => ({ t: s.t, ...s.derived }));
+  return historySamples.map(s => deriveAt(s.t, {
+    valence: s.signals.valence,
+    arousal: s.signals.arousal,
+    attention: s.signals.attention,
+    wish: s.signals.wish,
+    positivity: s.signals.positivity,
+    headMotion: s.signals.headMotion,
+    anger: s.emotion.Angry,
+    disgust: s.emotion.Disgust,
+  }));
 }
 function historySignalPoints(k: SignalKey): TVPoint[] {
   return historySamples.map(s => ({ t: s.t, v: s.signals[k] }));
@@ -515,8 +518,7 @@ async function bootMorphcast() {
     const addIfAvailable = (key: string) => {
       const m = mods[key];
       if (!m) { console.warn(`[morphcast] module ${key} not in SDK build, skipping`); return; }
-      const config = MODULE_CONFIG[key] ?? {};
-      loader.addModule(m.name, config);
+      loader.addModule(m.name);
     };
     // Skip FACE_AGE / FACE_GENDER / FACE_RACE / ALARM_* by design (ethics + not informative for our use).
     // FACE_QUALITY isn't in v1.16 build per probe — don't try to add.
