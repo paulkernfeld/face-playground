@@ -128,11 +128,19 @@ const MILD_EMOJI: Record<Emotion, string> = {
   Disgust:  '🤢',
   Neutral:  '😐',
 };
+const EMOTION_VERY_STRONG_T = 0.9;
 const EMOTION_STRONG_T = 0.7;
 const EMOTION_MILD_T   = 0.4;
-type EmoSnap = { emo: Record<Emotion, number>; valence: number; arousal: number };
+const EMOTION_FAINT_T  = 0.25;
+type EmoSnap = {
+  emo: Record<Emotion, number>;
+  valence: number; arousal: number;
+  wish: number; attention: number; headMotion: number;
+};
 function emojiFromSnap(s: EmoSnap): string {
-  // Dominant emotion among the six non-neutral Ekman categories.
+  // 1. Top tier — very strong Angry gets its own emoji.
+  if (s.emo.Angry >= EMOTION_VERY_STRONG_T) return '🤬';
+  // 2. Dominant Ekman emotion (strong / mild).
   let best: Emotion = 'Neutral';
   let bestVal = -Infinity;
   for (const e of EMOTIONS) {
@@ -141,16 +149,30 @@ function emojiFromSnap(s: EmoSnap): string {
   }
   if (bestVal >= EMOTION_STRONG_T) return STRONG_EMOJI[best];
   if (bestVal >= EMOTION_MILD_T)   return MILD_EMOJI[best];
-  // V/A fallback when nothing on the Ekman wheel is loud enough.
+  // 3. Quiet surprise — Surprise the only emotion with a "faint" tier.
+  if (s.emo.Surprise >= EMOTION_FAINT_T) return '😯';
+  // 4. Wish-driven craving when nothing on the Ekman wheel is loud.
+  if (s.wish > 0.6 && s.valence > 0.2) return '🤤';
+  // 5. Disoriented — head bouncing around while attention has drifted.
+  if (s.headMotion > 0.3 && s.attention < 0.3) return '😵‍💫';
+  // 6. V/A zones — most-specific first.
   const v = s.valence, a = s.arousal;
-  if (a < -0.6)                return '😴';
-  if (a >  0.5 && v >  0.3)    return '🤩';
-  if (v < -0.3)                return '😔';
-  if (v >  0.3)                return '😌';
+  if (a < -0.6)                            return '😴';   // deep sleepy
+  if (a >  0.5 && v >  0.3)                return '🤩';   // excited
+  if (v >  0.6 && a <  0.4)                return '🥰';   // warm / in love
+  if (a < -0.3 && Math.abs(v) < 0.3)       return '🥱';   // slightly tired
+  if (v < -0.3 && a >  0.3)                return '😩';   // whining
+  if (v < -0.3 && a >  0)                  return '😖';   // struggling
+  if (v < -0.3)                            return '😔';   // down
+  if (v >  0.3)                            return '😌';   // content
   return '😐';
 }
 function deriveEmoji(): string {
-  return emojiFromSnap({ emo: emotion, valence: latest.valence, arousal: latest.arousal });
+  return emojiFromSnap({
+    emo: emotion,
+    valence: latest.valence, arousal: latest.arousal,
+    wish: latest.wish, attention: latest.attention, headMotion: latest.headMotion,
+  });
 }
 // Binary-search nearest point by t. Series is sorted ascending.
 function nearestByT<T extends { t: number }>(arr: T[], t: number): T | null {
@@ -167,15 +189,23 @@ function nearestByT<T extends { t: number }>(arr: T[], t: number): T | null {
 // Sample N evenly-spaced emojis across [tStart, tEnd] via a snapshot lookup.
 // Returns null at sample times with no nearby data (within half a slot width),
 // so empty regions stay visually empty instead of repeating the nearest emoji.
+//
+// Slot boundaries snap to a fixed time grid (multiples of slotW). Without
+// snapping, every frame nudges slot midpoints forward by `dt`, which causes
+// each slot's "nearest data point" to flip at a slightly different time —
+// producing a constant wave of emoji swaps. Snapped boundaries hold each slot
+// still until enough wall time passes to shift the whole row left by one slot.
 function sampleEmojiRow(
   tStart: number, tEnd: number, n: number,
   snapAt: (t: number, maxGap: number) => EmoSnap | null,
 ): (string | null)[] {
   const slotW = (tEnd - tStart) / n;
+  const snappedEnd = Math.ceil(tEnd / slotW) * slotW;
+  const snappedStart = snappedEnd - (tEnd - tStart);
   const maxGap = slotW / 2;
   const out: (string | null)[] = [];
   for (let i = 0; i < n; i++) {
-    const t = tStart + (i + 0.5) * slotW;
+    const t = snappedStart + (i + 0.5) * slotW;
     const s = snapAt(t, maxGap);
     out.push(s ? emojiFromSnap(s) : null);
   }
@@ -834,6 +864,10 @@ function drawEmojiRow(
   }
 }
 const EMOJI_ROW_SAMPLES = 10;
+function nearestVal(series: TVPoint[], t: number, maxGap: number): number {
+  const p = nearestByT(series, t);
+  return p && Math.abs(p.t - t) <= maxGap ? p.v : 0;
+}
 function liveSnapAt(t: number, maxGap: number): EmoSnap | null {
   const e = nearestByT(emoSeries, t);
   const v = nearestByT(signalSeries.valence, t);
@@ -842,13 +876,23 @@ function liveSnapAt(t: number, maxGap: number): EmoSnap | null {
   if (Math.abs(e.t - t) > maxGap) return null;
   if (Math.abs(v.t - t) > maxGap) return null;
   if (Math.abs(a.t - t) > maxGap) return null;
-  return { emo: emoPointToRecord(e), valence: v.v, arousal: a.v };
+  return {
+    emo: emoPointToRecord(e),
+    valence: v.v, arousal: a.v,
+    wish:       nearestVal(signalSeries.wish, t, maxGap),
+    attention:  nearestVal(signalSeries.attention, t, maxGap),
+    headMotion: nearestVal(signalSeries.headMotion, t, maxGap),
+  };
 }
 function historySnapAt(t: number, maxGap: number): EmoSnap | null {
   const s = nearestByT(historySamples, t);
   if (!s) return null;
   if (Math.abs(s.t - t) > maxGap) return null;
-  return { emo: s.emotion, valence: s.signals.valence, arousal: s.signals.arousal };
+  return {
+    emo: s.emotion,
+    valence: s.signals.valence, arousal: s.signals.arousal,
+    wish: s.signals.wish, attention: s.signals.attention, headMotion: s.signals.headMotion,
+  };
 }
 
 function drawNoKey(ctx: CanvasRenderingContext2D, gw: number, gh: number) {
